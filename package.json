@@ -1,0 +1,17 @@
+{
+  "name": "duong-ai-bot-v6-api",
+  "version": "1.0.0",
+  "description": "DUONG AI BOT V6 Realtime TradingView Webhook API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.3",
+    "helmet": "^7.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
