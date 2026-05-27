@@ -1,6 +1,6 @@
 {
-  "name": "duong-ai-backend-v10-3-auth-smart-flow",
-  "version": "10.3.0",
+  "name": "duong-ai-v12-auth-backend-pro",
+  "version": "12.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
