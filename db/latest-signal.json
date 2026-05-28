@@ -4,18 +4,9 @@
   "symbol": "XAUUSD.G",
   "signal": "WAIT",
   "status": "WAIT",
-  "rsi": null,
-  "flow": null,
-  "delta": null,
-  "power": null,
   "buySell": "0/0",
   "conf": 55,
   "confidence": 55,
   "score": 55,
-  "trend": "Neutral",
-  "pressure": "WAIT",
-  "liquidity": "Waiting",
-  "risk": "--",
-  "action": "--",
   "updatedAt": "2026-05-28T00:00:00.000Z"
 }

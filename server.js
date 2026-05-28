@@ -21,42 +21,30 @@ const defaultUsers = [
 ];
 
 let latestSignalMemory = null;
-let sseClients = [];
+let streamClients = [];
+let legacyClients = [];
 
-function readJson(file, fallback){
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch(e){ return fallback; }
-}
+function readJson(file, fallback){ try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch(e){ return fallback; } }
 function writeJson(file, data){ fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
-function num(v, fallback=null){
-  if(v === undefined || v === null || v === '') return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-function ensureDb(){
-  if(!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, {recursive:true});
+function num(v, fallback=null){ if(v===undefined||v===null||v==='') return fallback; const n=Number(v); return Number.isFinite(n)?n:fallback; }
+function safeUser(u){ const x={...u}; delete x.password; return x; }
 
-  let users = defaultUsers;
-  if(fs.existsSync(USERS_FILE)){
-    users = readJson(USERS_FILE, defaultUsers);
-    if(!Array.isArray(users)) users = defaultUsers;
-  }
-  users = users.map(u => {
-    if(u.username === 'admin') return {...defaultUsers[0], ...u, password: u.password || '2606', admin:true, role:'admin', status:u.status || 'active'};
-    if(u.username === 'vip001') return {...defaultUsers[1], ...u, password: u.password || '123456', admin:false, role:'vip', status:u.status || 'active'};
+function ensureDb(){
+  if(!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR,{recursive:true});
+  let users = fs.existsSync(USERS_FILE) ? readJson(USERS_FILE, defaultUsers) : defaultUsers;
+  if(!Array.isArray(users)) users = defaultUsers;
+  users = users.map(u=>{
+    if(u.username==='admin') return {...defaultUsers[0],...u,password:u.password||'2606',admin:true,role:'admin',status:u.status||'active'};
+    if(u.username==='vip001') return {...defaultUsers[1],...u,password:u.password||'123456',admin:false,role:'vip',status:u.status||'active'};
     return u;
   });
-  if(!users.find(u => u.username === 'admin')) users.unshift(defaultUsers[0]);
-  if(!users.find(u => u.username === 'vip001')) users.push(defaultUsers[1]);
+  if(!users.find(u=>u.username==='admin')) users.unshift(defaultUsers[0]);
+  if(!users.find(u=>u.username==='vip001')) users.push(defaultUsers[1]);
   writeJson(USERS_FILE, users);
-
-  if(!fs.existsSync(SIGNAL_FILE)){
-    writeJson(SIGNAL_FILE, {ok:true,received:true,symbol:'XAUUSD.G',signal:'WAIT',status:'WAIT',buySell:'0/0',conf:55,confidence:55,score:55,trend:'Neutral',pressure:'WAIT',liquidity:'Waiting',risk:'--',action:'--',updatedAt:new Date().toISOString()});
-  }
+  if(!fs.existsSync(SIGNAL_FILE)) writeJson(SIGNAL_FILE,{ok:true,received:true,symbol:'XAUUSD.G',signal:'WAIT',status:'WAIT',buySell:'0/0',conf:55,confidence:55,score:55,updatedAt:new Date().toISOString()});
   if(!fs.existsSync(HISTORY_FILE)) writeJson(HISTORY_FILE, []);
   latestSignalMemory = readJson(SIGNAL_FILE, {});
 }
-function safeUser(u){ const x = {...u}; delete x.password; return x; }
 
 function normalizeSignal(b){
   return {
@@ -88,128 +76,93 @@ function normalizeSignal(b){
     buyZone:b.buyZone || b.buy_zone || b.demand || b.demandZone || b.smcBuyZone || null,
     source:b.source || '',
     reason:b.reason || '',
-    heartbeat: Date.now(),
+    heartbeat:Date.now(),
     raw:b,
     updatedAt:new Date().toISOString()
   };
 }
 
-function broadcastSignal(signal){
-  const payload = `event: signal\ndata: ${JSON.stringify(signal)}\n\n`;
-  sseClients = sseClients.filter(res => {
-    try { res.write(payload); return true; }
-    catch(e){ return false; }
-  });
+function broadcast(signal){
+  const streamPayload = `event: signal\ndata: ${JSON.stringify(signal)}\n\n`;
+  streamClients = streamClients.filter(res=>{ try{res.write(streamPayload); return true;}catch(e){return false;} });
+  const legacyPayload = `data: ${JSON.stringify({type:'signal', payload:signal})}\n\n`;
+  legacyClients = legacyClients.filter(res=>{ try{res.write(legacyPayload); return true;}catch(e){return false;} });
 }
 
-function saveAndBroadcast(signal){
+function saveSignal(signal){
   latestSignalMemory = signal;
   writeJson(SIGNAL_FILE, signal);
   const hist = readJson(HISTORY_FILE, []);
   hist.push(signal);
   writeJson(HISTORY_FILE, hist.slice(-500));
-  broadcastSignal(signal);
+  broadcast(signal);
 }
 
 ensureDb();
 
-app.get('/health', (req,res) => res.json({ok:true, service:'VYRO PRO MAX V14.1 REALTIME', time:new Date().toISOString()}));
-app.get('/api/health', (req,res) => res.json({ok:true, service:'VYRO PRO MAX V14.1 REALTIME', time:new Date().toISOString(), clients:sseClients.length}));
-app.get('/api/test-login', (req,res) => res.json({ok:true, admin:'admin / 2606', vip:'vip001 / 123456'}));
+app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO V13.6.2 UI + V14.2 realtime',time:new Date().toISOString()}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO V13.6.2 UI + V14.2 realtime',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
+app.get('/api/test-login',(req,res)=>res.json({ok:true,admin:'admin / 2606',vip:'vip001 / 123456'}));
 
-app.get('/api/stream', (req,res) => {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform',
-    'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no'
-  });
-  res.write(`event: connected\ndata: ${JSON.stringify({ok:true, time:new Date().toISOString()})}\n\n`);
-  if(latestSignalMemory) res.write(`event: signal\ndata: ${JSON.stringify(latestSignalMemory)}\n\n`);
-  sseClients.push(res);
-  req.on('close', () => {
-    sseClients = sseClients.filter(c => c !== res);
-  });
+app.post('/api/login',(req,res)=>{
+  const b=req.body||{};
+  const username=String(b.username||b.user||b.account||'').trim().toLowerCase();
+  const password=String(b.password||b.pass||b.pwd||'').trim();
+  const user=readJson(USERS_FILE,[]).find(u=>String(u.username).trim().toLowerCase()===username && String(u.password||'').trim()===password && String(u.status||'active').toLowerCase()==='active');
+  if(!user) return res.status(401).json({ok:false,success:false,message:'Sai tài khoản hoặc mật khẩu'});
+  res.json({ok:true,success:true,user:safeUser(user),token:'vyro-'+Date.now()});
 });
 
-setInterval(() => {
-  const ping = `event: ping\ndata: ${JSON.stringify({time:new Date().toISOString(), clients:sseClients.length})}\n\n`;
-  sseClients = sseClients.filter(res => {
-    try { res.write(ping); return true; } catch(e){ return false; }
-  });
-}, 15000);
-
-app.post('/api/login', (req,res) => {
-  const b = req.body || {};
-  const username = String(b.username || b.user || b.account || '').trim().toLowerCase();
-  const password = String(b.password || b.pass || b.pwd || '').trim();
-  const users = readJson(USERS_FILE, []);
-  const user = users.find(u => String(u.username).trim().toLowerCase() === username && String(u.password || '').trim() === password && String(u.status || 'active').toLowerCase() === 'active');
-  if(!user) return res.status(401).json({ok:false, success:false, message:'Sai tài khoản hoặc mật khẩu'});
-  res.json({ok:true, success:true, user:safeUser(user), token:'vyro-session-' + Date.now()});
-});
-
-app.get('/api/users', (req,res) => {
+app.get('/api/users',(req,res)=>{
   res.set('Cache-Control','no-store');
-  const users = readJson(USERS_FILE, []).map(safeUser);
-  res.json({ok:true, users});
+  res.json({ok:true,users:readJson(USERS_FILE,[]).map(safeUser)});
 });
 
-app.post('/api/users', (req,res) => {
-  const b = req.body || {};
-  if(!b.username || !b.password) return res.status(400).json({ok:false, message:'Thiếu username/password'});
-  const users = readJson(USERS_FILE, []);
-  if(users.find(u => String(u.username).toLowerCase() === String(b.username).toLowerCase())){
-    return res.status(409).json({ok:false, message:'Username đã tồn tại'});
-  }
-  const u = {
-    username:String(b.username).trim(),
-    password:String(b.password).trim(),
-    name:b.name || b.username,
-    plan:b.plan || 'pro',
-    status:b.status || 'active',
-    expire:b.expire || '2099-12-31',
-    admin:!!b.admin,
-    role:b.admin ? 'admin' : 'vip',
-    email:b.email || '',
-    createdAt:new Date().toISOString()
-  };
-  users.push(u);
-  writeJson(USERS_FILE, users);
-  res.json({ok:true, user:safeUser(u)});
-});
-
-app.get('/api/latest-signal', (req,res) => {
+app.get('/api/latest-signal',(req,res)=>{
   res.set('Cache-Control','no-store');
   res.json(latestSignalMemory || readJson(SIGNAL_FILE, {}));
 });
 
-app.get('/api/signal-history', (req,res) => {
+app.get('/api/signal-history',(req,res)=>{
   res.set('Cache-Control','no-store');
-  const h = readJson(HISTORY_FILE, []);
-  res.json({ok:true, history:h.slice(-100).reverse()});
+  res.json({ok:true,history:readJson(HISTORY_FILE,[]).slice(-100).reverse()});
 });
 
-app.post('/api/signal', (req,res) => {
-  const d = normalizeSignal(req.body || {});
-  saveAndBroadcast(d);
-  res.json({ok:true, received:d, realtimeClients:sseClients.length});
+app.get('/api/stream',(req,res)=>{
+  res.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
+  res.write(`event: connected\ndata: ${JSON.stringify({ok:true,time:new Date().toISOString()})}\n\n`);
+  if(latestSignalMemory) res.write(`event: signal\ndata: ${JSON.stringify(latestSignalMemory)}\n\n`);
+  streamClients.push(res);
+  req.on('close',()=>{streamClients=streamClients.filter(c=>c!==res);});
 });
 
-app.post('/api/test-signal', (req,res) => {
-  const d = normalizeSignal({
-    symbol:'XAUUSD.G', signal:'SELL NOW', status:'SELL NOW', timeframe:'M1',
-    price:4388.96, rsi:43.7, flow:-239, delta:-720, power:1133.3, buySell:'0.0/10.0',
-    conf:90, confidence:90, score:90, trend:'Bearish', pressure:'Seller dominant',
-    liquidity:'Mid-range / waiting', risk:'Medium', action:'WAIT CONFIRM',
-    sellZone:'4739.43', buyZone:'4690.00', supply:'4739.43', demand:'4690.00',
-    source:'VYRO_TEST_REALTIME'
-  });
-  saveAndBroadcast(d);
-  res.json({ok:true, received:d, realtimeClients:sseClients.length});
+// compatibility for old script
+app.get('/events',(req,res)=>{
+  res.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
+  if(latestSignalMemory) res.write(`data: ${JSON.stringify({type:'signal',payload:latestSignalMemory})}\n\n`);
+  legacyClients.push(res);
+  req.on('close',()=>{legacyClients=legacyClients.filter(c=>c!==res);});
 });
 
-app.use(express.static(__dirname, {etag:false, maxAge:0}));
-app.use((req,res) => res.sendFile(path.join(__dirname, 'index.html')));
+setInterval(()=>{
+  const ping=`event: ping\ndata: ${JSON.stringify({time:new Date().toISOString()})}\n\n`;
+  streamClients=streamClients.filter(res=>{try{res.write(ping);return true;}catch(e){return false;}});
+  legacyClients=legacyClients.filter(res=>{try{res.write(`data: ${JSON.stringify({type:'ping',time:new Date().toISOString()})}\n\n`);return true;}catch(e){return false;}});
+},15000);
 
-app.listen(PORT, () => console.log('VYRO PRO MAX V14.1 REALTIME LAYER running on ' + PORT));
+app.post('/api/signal',(req,res)=>{
+  const d=normalizeSignal(req.body||{});
+  saveSignal(d);
+  res.json({ok:true,received:d,realtimeClients:streamClients.length+legacyClients.length});
+});
+
+app.post('/api/test-signal',(req,res)=>{
+  const d=normalizeSignal({symbol:'XAUUSD.G',signal:'SELL',status:'SELL',price:4388.96,timeframe:'M1',rsi:43.7,flow:-239,delta:-720,power:1133.3,buySell:'0.0/10.0',conf:90,confidence:90,score:90,trend:'Bearish',pressure:'Seller dominant',liquidity:'Mid-range / waiting',risk:'Medium',action:'WAIT CONFIRM',sellZone:'4739.43',buyZone:'4690.00',supply:'4739.43',demand:'4690.00',source:'VYRO_TEST_REALTIME',reason:'Realtime test'});
+  saveSignal(d);
+  res.json({ok:true,received:d,realtimeClients:streamClients.length+legacyClients.length});
+});
+
+app.use(express.static(__dirname,{etag:false,maxAge:0}));
+app.use((req,res)=>res.sendFile(path.join(__dirname,'index.html')));
+
+app.listen(PORT,()=>console.log('VYRO V13.6.2 UI STABLE + V14.2 REALTIME running on '+PORT));

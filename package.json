@@ -1,6 +1,6 @@
 {
-  "name": "vyro-pro-max-realtime-layer",
-  "version": "14.1.0",
+  "name": "vyro-old-ui-stable-plus-realtime",
+  "version": "14.2.0",
   "private": true,
   "main": "server.js",
   "scripts": {
