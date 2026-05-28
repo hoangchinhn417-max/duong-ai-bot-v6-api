@@ -1,6 +1,6 @@
 {
-  "name": "vyro-old-ui-stable-plus-realtime",
-  "version": "14.2.0",
+  "name": "vyro-pro-max-terminal-v15-6-final-production",
+  "version": "15.6.0",
   "private": true,
   "main": "server.js",
   "scripts": {
@@ -12,5 +12,6 @@
   },
   "engines": {
     "node": "20.x"
-  }
+  },
+  "description": "VYRO PRO MAX TERMINAL V15.6 final production realtime trading engine"
 }

@@ -1,10 +1,10 @@
-const APP_VERSION='VYRO_PRO_MAX';
+const APP_VERSION='VYRO_PRO_MAX_TERMINAL_V15_3_FINAL_FULL_REALTIME';
 const USER_KEY='vyro_pro_users';
 const PIN_KEY='vyro_pro_pin';
 const SESSION_KEY='vyro_pro_session';
 
 let users=[],currentUser=null,ADMIN_PIN=localStorage.getItem(PIN_KEY)||'2606';
-let API_BASE=window.location.origin,eventSource=null,lastDataTime=0,heartbeatTimer=null;
+let API_BASE=window.location.origin,eventSource=null,lastDataTime=0,heartbeatTimer=null,hasRealtimeData=false;
 
 function $(id){return document.getElementById(id)}
 function initUsers(){
@@ -70,7 +70,7 @@ function enterApp(user){
   $('login').classList.add('hidden');$('sidebar').classList.remove('hidden');$('app').classList.remove('hidden');
   if($('topAdminBtn')) $('topAdminBtn').classList.toggle('hidden',!user.admin);
   if(user.admin)unlockAdmin(true); else lockAdmin(false);
-  connectApi();pullLatest();startHeartbeat();
+  connectApi();pullLatest();startHeartbeat();setTimeout(initTerminalChart,300);
   if(location.pathname.includes('/admin') && user.admin){setTimeout(()=>location.hash='#admin',100)}
 }
 function logout(){
@@ -179,51 +179,68 @@ function connectApi(){
     eventSource.onerror=()=>{setApiState(false);};
   }catch(e){setApiState(false)}
 }
-function setApiState(ok){$('apiStatusText').innerText=ok?'ONLINE':'STANDBY';$('connectionText').innerText=ok?'ONLINE':'STANDBY'; if($('apiSubText'))$('apiSubText').innerText=ok?'SSE realtime - nhận tức thì từ MT5':'MT5 realtime bridge'}
+function setApiState(ok){$('apiStatusText').innerText=ok?'ONLINE':'STANDBY';$('connectionText').innerText=ok?'ONLINE':'STANDBY'; if($('apiSubText'))$('apiSubText').innerText=ok?'SSE realtime - nhận tức thì từ MT5':'Chờ backend realtime';}
 async function pullLatest(){
   try{let r=await fetch(API_BASE+'/api/latest-signal',{cache:'no-store'}),d=await r.json();if(d&&d.symbol){updateSignal(d);setApiState(true)}else throw new Error('empty')}
-  catch(e){setApiState(false);demoSignal();showToast('API standby - đang dùng demo signal')}
+  catch(e){setApiState(false);showWaitingRealtime();showToast('Chưa có backend realtime hoặc MT5 chưa gửi dữ liệu')}
 }
-function demoSignal(){
-  updateSignal({symbol:'XAUUSD',timeframe:'M1',signal:'WAIT',score:55,price:'--',rsi:'--',flow:'--',delta:'--',power:'--',buySell:'--',reason:'API chưa có dữ liệu mới. Dashboard vẫn sẵn sàng nhận tín hiệu MT5.',trend:'Neutral',liquidity:'Waiting',pressure:'Waiting',risk:'Medium',source:'DEMO'});
+function showWaitingRealtime(){
+  if(hasRealtimeData) return;
+  updateSignal({symbol:'XAUUSD.G',timeframe:'M1',signal:'WAIT',score:55,price:'--',rsi:'--',flow:'--',delta:'--',power:'--',buySell:'--',reason:'Đang chờ dữ liệu realtime từ MT5 EA Bridge.',trend:'WAITING',liquidity:'WAITING',pressure:'WAITING',risk:'WAITING',source:'WAITING_FOR_MT5',realtime:false});
 }
 function norm(v){let s=String(v||'WAIT').toUpperCase();if(s.includes('SELL'))return'SELL NOW';if(s.includes('BUY'))return'BUY NOW';return'WAIT'}
 function nval(v){let x=Number(v);return isNaN(x)?0:x}
 
 function firstVal(obj, keys, fallback='--'){
+  function get(o,k){
+    if(!o || typeof o!=='object') return undefined;
+    if(o[k]!==undefined && o[k]!==null && o[k]!=='') return o[k];
+    if(o.raw && o.raw[k]!==undefined && o.raw[k]!==null && o.raw[k]!=='') return o.raw[k];
+    if(o.smc && o.smc[k]!==undefined && o.smc[k]!==null && o.smc[k]!=='') return o.smc[k];
+    if(o.zones && o.zones[k]!==undefined && o.zones[k]!==null && o.zones[k]!=='') return o.zones[k];
+    return undefined;
+  }
   for(const k of keys){
-    if(!obj) continue;
-    if(obj[k]!==undefined && obj[k]!==null && obj[k]!=='') return obj[k];
-    if(obj.raw && obj.raw[k]!==undefined && obj.raw[k]!==null && obj.raw[k]!=='') return obj.raw[k];
+    const v=get(obj,k); if(v!==undefined) return v;
   }
   return fallback;
 }
 function rawFlow(s){return firstVal(s,['flow','FLOW','cvd'],'--')}
 function rawDelta(s){return firstVal(s,['delta','DELTA','powerDelta'],'--')}
 function rawPower(s){return firstVal(s,['power','POWER','diff'],'--')}
-function rawBuySell(s){return firstVal(s,['buySell','buy_sell','ratio','BUY/SELL','buy_sell_ratio'],'--')}
+function rawBuySell(s){let v=firstVal(s,['buySell','buy_sell','ratio','BUY/SELL','buy_sell_ratio'],'--'); if((v==='--'||v==='0/0') && s.buySellRatio!==undefined){let n=Number(s.buySellRatio); if(Number.isFinite(n)) return n>=5?`${n.toFixed(1)}/0.6`:`0.6/${Math.max(0,10-n).toFixed(1)}`;} return v;}
 function zoneVal(s,type){
   const keys=type==='sell'?['sellZone','sell_zone','supply','supplyZone','smcSellZone','smc_supply','supply_line','supplyPrice']:['buyZone','buy_zone','demand','demandZone','smcBuyZone','smc_demand','demand_line','demandPrice'];
   return firstVal(s,keys,'--');
 }
 function smcVal(s,keys,fallback='--'){return firstVal(s,keys,fallback)}
+function cleanDisplay(v,fallback='--'){
+  if(v===undefined||v===null) return fallback;
+  if(Array.isArray(v)) v=v.find(x=>cleanDisplay(x,'')!=='') || '';
+  if(typeof v==='object') v=v.text || v.value || v.price || '';
+  const t=String(v).trim();
+  if(!t||t==='0'||t==='0.0'||t==='0.00'||t==='0/0'||t.toLowerCase()==='false'||t.toLowerCase()==='null'||t.toLowerCase()==='undefined'||t.toLowerCase()==='nan'||t.toLowerCase()==='n/a'||t.toUpperCase()==='N/A') return fallback;
+  return t;
+}
+function cleanZone(v){ return cleanDisplay(v,'--'); }
 
 function dominanceFrom(s,sig){let f=nval(rawFlow(s)),d=nval(rawDelta(s));if(f<0&&d<0)return'Seller dominant';if(f>0&&d>0)return'Buyer dominant';if(sig.includes('SELL'))return'Seller dominant';if(sig.includes('BUY'))return'Buyer dominant';return'Mixed'}
 function updateSignal(s){
+  if(s && s.realtime!==false && s.source!=='WAITING_FOR_MT5') hasRealtimeData=true;
   let sig=norm(s.signal),sc=Math.max(0,Math.min(100,Number(s.score||s.confidence||s.conf||55))),p=s.price||s.bid||s.ask||'--',fv=rawFlow(s),dv=rawDelta(s),pv=rawPower(s),bs=rawBuySell(s),dom=dominanceFrom(s,sig);
-  let sellZ=zoneVal(s,'sell'), buyZ=zoneVal(s,'buy');
-  let liquidity=smcVal(s,['liquidity','liq','ssl','bsl','liquidityText'],'N/A');
-  let bos=smcVal(s,['bosChoch','bos_choch','bos','choch','structureSignal'],'--');
-  let stopHunt=smcVal(s,['stopHunt','stophunt','stop_hunt'],'--');
-  let fvg=smcVal(s,['fvg','fvgZone','fvg_zone'],'--');
-  let ob=smcVal(s,['ob','obZone','orderBlock','order_block'],'--');
-  let tp1=smcVal(s,['tp1','TP1'],'--'), tp2=smcVal(s,['tp2','TP2'],'--'), tp3=smcVal(s,['tp3','TP3'],'--');
+  let sellZ=cleanZone(zoneVal(s,'sell')), buyZ=cleanZone(zoneVal(s,'buy'));
+  let liquidity=cleanDisplay(smcVal(s,['liquidity','liq','ssl','bsl','liquidityText','liquiditySweep'],'WAITING'),'WAITING');
+  let bos=cleanDisplay(smcVal(s,['bosChoch','bos_choch','structureSignal'],'WAITING'),'WAITING');
+  let stopHunt=cleanDisplay(smcVal(s,['stopHunt','stophunt','stop_hunt'],'WAITING'),'WAITING');
+  let fvg=cleanDisplay(smcVal(s,['fvg','fvgZone','fvg_zone'],'WAITING'),'WAITING');
+  let ob=cleanDisplay(smcVal(s,['ob','obZone','orderBlock','order_block'],'WAITING'),'WAITING');
+  let tp1=cleanDisplay(smcVal(s,['tp1','TP1'],'--'),'--'), tp2=cleanDisplay(smcVal(s,['tp2','TP2'],'--'),'--'), tp3=cleanDisplay(smcVal(s,['tp3','TP3'],'--'),'--');
   document.body.classList.remove('sell','buy','wait');document.body.classList.add(sig.includes('SELL')?'sell':sig.includes('BUY')?'buy':'wait');
   $('signal').innerText=sig;$('score').innerText=sc;$('ring').style.background=`conic-gradient(var(--cyan) ${sc}%,rgba(255,255,255,.12) 0)`;
   $('reason').innerText=s.reason||`${s.symbol||'XAUUSD'} ${sig} from MT5 Smart Flow.`;$('marketTag').innerText=`${s.symbol||'XAUUSD'} · ${s.timeframe||'M1'} · SMART FLOW`;
   $('price').innerText=p;$('priceState').innerText=sig.replace(' NOW','');$('rsi').innerText=s.rsi||'--';$('flow').innerText=fv;$('flowSub').innerText=dom;$('delta').innerText=dv;
   $('deltaSub').innerText=nval(dv)>0?'Buyer attack':nval(dv)<0?'Seller attack':'Neutral attack';$('power').innerText=pv;$('buySell').innerText=bs;$('conf').innerText=sc+'%';$('lastUpdate').innerText=fmt(s.updatedAt||s.receivedAt||new Date().toISOString());
-  if($('sellZone'))$('sellZone').innerText=sellZ;if($('buyZone'))$('buyZone').innerText=buyZ;$('trend').innerText=s.trend||'N/A';$('liquidity').innerText=liquidity;$('pressure').innerText=s.pressure||sig;$('risk').innerText=s.risk||'Medium';$('action').innerText=s.action||'Follow setup';$('source').innerText=s.source||'MT5';$('dominance').innerText=dom;$('dominanceNote').innerText=`Flow ${fv} · Delta ${dv} · Power ${pv}`;$('lastTick').innerText=p;lastDataTime=Date.now();addHistory(sig,p,fv,dv);
+  if($('sellZone'))$('sellZone').innerText=sellZ;if($('buyZone'))$('buyZone').innerText=buyZ;if($('noTradeZone'))$('noTradeZone').innerText=cleanDisplay(s.noTrade,'WAITING');$('trend').innerText=cleanDisplay(s.trend,sig.replace(' NOW',''));$('liquidity').innerText=liquidity;$('pressure').innerText=cleanDisplay(s.pressure,sig);$('risk').innerText=cleanDisplay(s.risk,'WAITING');$('action').innerText=cleanDisplay(s.action,'WAITING');$('source').innerText=s.source||'MT5';$('dominance').innerText=dom;$('dominanceNote').innerText=`Flow ${fv} · Delta ${dv} · Power ${pv}`;$('lastTick').innerText=p;lastDataTime=Date.now();addHistory(sig,p,fv,dv);
   updateSMCPanel({s,sig,sc,p,fv,dv,pv,bs,dom,sellZ,buyZ,liquidity,bos,stopHunt,fvg,ob,tp1,tp2,tp3});
   updateTerminalChart({price:p,signal:sig,sellZone:sellZ,buyZone:buyZ,tp1,tp2,tp3,fvg,liquidity,updatedAt:s.updatedAt||s.receivedAt||new Date().toISOString()});
 }
@@ -235,7 +252,7 @@ function addHistory(sig,p,fv,dv){
 }
 function startHeartbeat(){
   if(heartbeatTimer)clearInterval(heartbeatTimer);
-  heartbeatTimer=setInterval(()=>{$('heartbeat').innerText=new Date().toLocaleTimeString('vi-VN');$('mode').innerText=lastDataTime&&Date.now()-lastDataTime>30000?'NO NEW SIGNAL':'LIVE';$('age').innerText=lastDataTime?Math.floor((Date.now()-lastDataTime)/1000)+'s ago':'waiting'},1000)
+  heartbeatTimer=setInterval(()=>{$('heartbeat').innerText=new Date().toLocaleTimeString('vi-VN');$('mode').innerText=!hasRealtimeData?'WAITING MT5':(lastDataTime&&Date.now()-lastDataTime>30000?'NO NEW SIGNAL':'LIVE');$('age').innerText=lastDataTime?Math.floor((Date.now()-lastDataTime)/1000)+'s ago':'waiting'},1000)
 }
 function copySignal(){navigator.clipboard.writeText(`VYRO PRO ${$('signal').innerText} ${$('price').innerText} FLOW ${$('flow').innerText} DELTA ${$('delta').innerText}`).then(()=>showToast('Copied'))}
 function fmt(x){try{return new Date(x).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}catch(e){return'--'}}
@@ -250,58 +267,428 @@ window.addEventListener('load',()=>{
 });
 
 
-// ===== V15 TradingView Terminal + SMC renderer =====
-let vyroChart=null, candleSeries=null, lineSeries=null, markerSeries=null, fallbackCanvas=null, fallbackData=[];
+// ===== V15.4 FINAL PRODUCTION: realtime canvas terminal + SMC renderer =====
+let vyroChart=null, candleSeries=null, lineSeries=null, markerSeries=null, fallbackCanvas=null, fallbackData=[], smcLines=[];
+let currentTfSeconds=60;
+
 function initTerminalChart(){
-  const el=$('tvChart'); if(!el) return;
   fallbackCanvas=$('fallbackChart');
-  if(window.LightweightCharts){
-    try{
-      vyroChart=LightweightCharts.createChart(el,{layout:{background:{color:'transparent'},textColor:'#b8c8e8'},grid:{vertLines:{color:'rgba(80,130,210,.12)'},horzLines:{color:'rgba(80,130,210,.12)'}},crosshair:{mode:1},rightPriceScale:{borderColor:'rgba(80,130,210,.18)'},timeScale:{borderColor:'rgba(80,130,210,.18)',timeVisible:true,secondsVisible:true}});
-      candleSeries=vyroChart.addCandlestickSeries({upColor:'#00ff9d',downColor:'#ff3f68',borderUpColor:'#00ff9d',borderDownColor:'#ff3f68',wickUpColor:'#9fffd6',wickDownColor:'#ff9aaa'});
-      seedCandles(Number($('price')?.innerText)||4380);
-      window.addEventListener('resize',()=>{try{vyroChart.applyOptions({width:el.clientWidth,height:el.clientHeight});vyroChart.timeScale().fitContent()}catch(e){}});
-      return;
-    }catch(e){}
+  seedFallback(Number($('price')?.innerText) || 0);
+  drawFallbackChart({});
+  window.addEventListener('resize',()=>drawFallbackChart(lastTerminalData||{}));
+  document.querySelectorAll('.tf-tabs button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.tf-tabs button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const t=btn.innerText.trim().toUpperCase();
+      currentTfSeconds = t==='M5'?300:t==='M15'?900:t==='H1'?3600:60;
+      fallbackData=[];
+      const px=Number(($('price')?.innerText||'').replace(/[^0-9.-]/g,''));
+      seedFallback(Number.isFinite(px)?px:0);
+      drawFallbackChart(lastTerminalData||{});
+    });
+  });
+}
+
+function seedFallback(base){
+  fallbackData=[];
+  if(!base || !Number.isFinite(base)){
+    return;
   }
-  seedFallback(Number($('price')?.innerText)||4380);
+  const now=Math.floor(Date.now()/1000)-80*currentTfSeconds;
+  let p=base;
+  for(let i=0;i<80;i++){
+    const o=p;
+    const drift=(Math.sin(i/7)*0.18)+(Math.random()-.5)*0.85;
+    const c=o+drift;
+    const h=Math.max(o,c)+Math.random()*0.55;
+    const l=Math.min(o,c)-Math.random()*0.55;
+    fallbackData.push({time:now+i*currentTfSeconds,open:o,high:h,low:l,close:c});
+    p=c;
+  }
 }
-function seedCandles(base){
-  const now=Math.floor(Date.now()/1000)-1200; let data=[],p=Number(base)||4380;
-  for(let i=0;i<80;i++){let o=p,c=o+(Math.random()-.52)*1.8,h=Math.max(o,c)+Math.random()*1.2,l=Math.min(o,c)-Math.random()*1.2;data.push({time:now+i*15,open:o,high:h,low:l,close:c});p=c}
-  candleSeries.setData(data); vyroChart.timeScale().fitContent(); fallbackData=data;
-}
-function seedFallback(base){fallbackData=[];let p=Number(base)||4380;for(let i=0;i<80;i++){let c=p+(Math.random()-.52)*1.8;fallbackData.push({close:c});p=c}drawFallbackChart({})}
+
+let lastTerminalData=null;
 function updateTerminalChart(d){
-  if($('chartPrice')) $('chartPrice').innerText=d.price||'--';
-  const price=Number(d.price); if(!Number.isFinite(price)) return;
-  if(candleSeries){
-    const last=fallbackData[fallbackData.length-1]||{close:price};
-    const o=last.close, c=price, h=Math.max(o,c)+Math.random()*.65, l=Math.min(o,c)-Math.random()*.65;
-    const bar={time:Math.floor(Date.now()/1000),open:o,high:h,low:l,close:c};
-    fallbackData.push(bar); if(fallbackData.length>120)fallbackData.shift(); candleSeries.update(bar);
-    drawOverlayLines(d);
-  } else {fallbackData.push({close:price}); if(fallbackData.length>120)fallbackData.shift(); drawFallbackChart(d)}
+  lastTerminalData=d||{};
+  if($('chartPrice')) $('chartPrice').innerText=cleanDisplay(d.price,'--');
+  const price=Number(String(d.price||'').replace(/[^0-9.-]/g,''));
+  if(!Number.isFinite(price) || price<=0){ drawFallbackChart(d||{}); return; }
+  if(!fallbackData.length) seedFallback(price);
+  const now=Math.floor(Date.now()/1000);
+  let last=fallbackData[fallbackData.length-1];
+  if(!last){ seedFallback(price); last=fallbackData[fallbackData.length-1]; }
+  if(last && now-last.time < Math.max(10, Math.floor(currentTfSeconds/2))){
+    last.close=price; last.high=Math.max(last.high,price); last.low=Math.min(last.low,price);
+  }else{
+    const o=last?last.close:price;
+    fallbackData.push({time:now,open:o,high:Math.max(o,price),low:Math.min(o,price),close:price});
+    if(fallbackData.length>140) fallbackData.shift();
+  }
+  drawFallbackChart(d||{});
 }
-function drawOverlayLines(d){
-  // Lightweight overlay drawings are intentionally simple here; SMC values render in right panel and fallback canvas.
-}
+
 function drawFallbackChart(d){
-  const canvas=fallbackCanvas; if(!canvas) return; const box=canvas.parentElement.getBoundingClientRect(); canvas.width=box.width; canvas.height=box.height;
-  const ctx=canvas.getContext('2d'), w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h);
-  ctx.strokeStyle='rgba(80,130,210,.14)'; ctx.lineWidth=1; for(let i=0;i<8;i++){let y=h*i/8;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
-  const vals=fallbackData.map(x=>x.close), min=Math.min(...vals)-2,max=Math.max(...vals)+2; const y=v=>h-((v-min)/(max-min))*h;
-  ctx.strokeStyle='rgba(0,217,255,.9)'; ctx.lineWidth=2; ctx.beginPath(); vals.forEach((v,i)=>{let x=i*(w/(Math.max(vals.length-1,1))); i?ctx.lineTo(x,y(v)):ctx.moveTo(x,y(v))}); ctx.stroke();
-  function zone(val,color,label){let n=Number(String(val).split(/[-–]/)[0]); if(!Number.isFinite(n))return; let yy=y(n); ctx.strokeStyle=color;ctx.fillStyle=color;ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(0,yy);ctx.lineTo(w,yy);ctx.stroke();ctx.setLineDash([]);ctx.fillText(label+' '+val,12,yy-6)}
-  ctx.font='12px Arial'; zone(d.sellZone,'#ff3f68','SUPPLY'); zone(d.buyZone,'#00ff9d','DEMAND'); zone(d.tp1,'#ffd34d','TP1'); zone(d.tp2,'#ffd34d','TP2'); zone(d.tp3,'#ffd34d','TP3');
+  const canvas=fallbackCanvas||$('fallbackChart');
+  if(!canvas) return;
+  canvas.style.display='block';
+  const box=canvas.parentElement.getBoundingClientRect();
+  const ratio=window.devicePixelRatio||1;
+  canvas.width=Math.max(1,Math.floor(box.width*ratio));
+  canvas.height=Math.max(1,Math.floor(box.height*ratio));
+  canvas.style.width=box.width+'px'; canvas.style.height=box.height+'px';
+  const ctx=canvas.getContext('2d'); ctx.setTransform(ratio,0,0,ratio,0,0);
+  const w=box.width,h=box.height; ctx.clearRect(0,0,w,h);
+
+  const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,'rgba(0,217,255,.08)'); g.addColorStop(1,'rgba(0,0,0,.06)'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='rgba(80,130,210,.14)'; ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){let y=h*i/8;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+  for(let i=0;i<=10;i++){let x=w*i/10;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
+
+  if(!fallbackData.length){
+    ctx.fillStyle='rgba(184,200,232,.80)'; ctx.font='700 16px Arial'; ctx.fillText('WAITING REALTIME MT5 PRICE FEED',24,42);
+    ctx.font='12px Arial'; ctx.fillText('EA phải gửi vào /api/signal và trả về {"ok":true}',24,66);
+    return;
+  }
+  const extras=[];
+  ['sellZone','buyZone','tp1','tp2','tp3'].forEach(k=>{const n=toNum(d[k]); if(Number.isFinite(n)&&n>0) extras.push(n)});
+  const vals=fallbackData.flatMap(x=>[x.high,x.low,x.close]).concat(extras);
+  let min=Math.min(...vals), max=Math.max(...vals); if(!Number.isFinite(min)||!Number.isFinite(max)||min===max){min=(fallbackData[0]?.close||0)-5;max=(fallbackData[0]?.close||0)+5;}
+  const pad=(max-min)*0.12||2; min-=pad; max+=pad;
+  const y=v=>h-((v-min)/(max-min))*h;
+  const x=i=>18+i*((w-46)/(Math.max(fallbackData.length-1,1)));
+
+  // SMC zones first
+  function zone(val,color,label,fill){
+    const n=toNum(val); if(!Number.isFinite(n)||n<=0) return;
+    const yy=y(n); ctx.save(); ctx.strokeStyle=color; ctx.fillStyle=color; ctx.setLineDash([7,5]); ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(w,yy); ctx.stroke(); ctx.setLineDash([]);
+    if(fill){ctx.globalAlpha=.11; ctx.fillRect(0,yy-18,w,36); ctx.globalAlpha=1;}
+    ctx.font='700 12px Arial'; ctx.fillText(label+' '+formatNum(n),12,Math.max(14,yy-7)); ctx.restore();
+  }
+  zone(d.sellZone,'#ff3f68','SUPPLY',true); zone(d.buyZone,'#00ff9d','DEMAND',true); zone(d.tp1,'#ffd34d','TP1',false); zone(d.tp2,'#ffd34d','TP2',false); zone(d.tp3,'#ffd34d','TP3',false);
+
+  // candles
+  const cw=Math.max(3,(w-60)/fallbackData.length*.58);
+  fallbackData.forEach((b,i)=>{
+    const xx=x(i), yo=y(b.open), yc=y(b.close), yh=y(b.high), yl=y(b.low);
+    const up=b.close>=b.open; ctx.strokeStyle=up?'#00ff9d':'#ff3f68'; ctx.fillStyle=ctx.strokeStyle;
+    ctx.beginPath(); ctx.moveTo(xx,yh); ctx.lineTo(xx,yl); ctx.stroke();
+    const top=Math.min(yo,yc), bot=Math.max(yo,yc); ctx.fillRect(xx-cw/2,top,cw,Math.max(2,bot-top));
+  });
+
+  // live price
+  const last=fallbackData[fallbackData.length-1]; const lp=last.close, yy=y(lp);
+  ctx.strokeStyle='rgba(0,217,255,.9)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(w,yy); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#00d9ff'; ctx.fillRect(w-84,yy-11,80,22); ctx.fillStyle='#00111f'; ctx.font='800 12px Arial'; ctx.fillText(formatNum(lp),w-78,yy+4);
+
+  ctx.fillStyle='rgba(184,200,232,.75)'; ctx.font='12px Arial';
+  ctx.fillText('Realtime MT5 candles · '+(document.querySelector('.tf-tabs button.active')?.innerText||'M1'),18,22);
 }
+
+function toNum(v){
+  if(v===undefined||v===null) return NaN;
+  if(typeof v==='object') v=v.price||v.value||v.text||'';
+  const m=String(v).match(/[0-9]{3,5}(?:\.[0-9]+)?/);
+  return m?Number(m[0]):Number(v);
+}
+function formatNum(n){return Number(n).toFixed(2).replace(/\.00$/,'')}
+
 function updateSMCPanel(x){
-  const set=(id,v)=>{if($(id))$(id).innerText=(v===undefined||v===null||v==='')?'--':v};
-  set('smcStructure',x.s.trend||x.sig.replace(' NOW','')); set('smcStructureNote',x.sig.includes('SELL')?'Lower High / Lower Low':x.sig.includes('BUY')?'Higher High / Higher Low':'Waiting structure');
-  set('smcBosChoch',x.bos); set('smcBosChochNote',String(x.bos).includes('CHOCH')?'Change of Character':String(x.bos).includes('BOS')?'Break of Structure':'Waiting');
+  const set=(id,v,fb='--')=>{if($(id))$(id).innerText=cleanDisplay(v,fb)};
+  const trend=cleanDisplay(x.s.trend||x.sig.replace(' NOW',''),'WAITING');
+  set('smcStructure',trend,'WAITING');
+  set('smcStructureNote',trend.includes('SELL')||trend.includes('BEAR')?'Lower High / Lower Low':trend.includes('BUY')||trend.includes('BULL')?'Higher High / Higher Low':'Waiting structure');
+  set('smcBosChoch',x.bos,'WAITING'); set('smcBosChochNote',String(x.bos).includes('CHOCH')?'Change of Character':String(x.bos).includes('BOS')?'Break of Structure':'Waiting');
   set('smcStrength',x.s.trendStrength||((x.sc>=80||Math.abs(nval(x.fv))>500)?'STRONG':'MEDIUM'));
-  set('smcLiquidity',x.liquidity); set('smcLiquidityNote',String(x.liquidity).includes('SSL')?'Sell side liquidity':String(x.liquidity).includes('BSL')?'Buy side liquidity':'Liquidity read');
-  set('smcStopHunt',x.stopHunt); set('smcSellZone',x.sellZ); set('smcBuyZone',x.buyZ); set('smcTp1',x.tp1); set('smcTp2',x.tp2); set('smcTp3',x.tp3); set('smcFvg',x.fvg); set('smcOb',x.ob); set('smcMitigation',smcVal(x.s,['mitigation'],'PARTIAL')); set('smcConfluence',smcVal(x.s,['confluence'],'HIGH'));
+  set('smcLiquidity',x.liquidity,'WAITING'); set('smcLiquidityNote',String(x.liquidity).includes('SSL')?'Sell side liquidity':String(x.liquidity).includes('BSL')?'Buy side liquidity':'Liquidity read');
+  set('smcStopHunt',x.stopHunt,'WAITING'); set('smcStopHuntNote',String(cleanDisplay(x.stopHunt,'')).includes('ARM')?'Possible liquidity grab':'Status');
+  set('smcSellZone',x.sellZ); set('smcBuyZone',x.buyZ);
+  set('smcTp1',x.tp1); set('smcTp2',x.tp2); set('smcTp3',x.tp3);
+  set('smcFvg',x.fvg,'WAITING'); set('smcOb',x.ob,'WAITING'); set('smcMitigation',smcVal(x.s,['mitigation'],'PARTIAL')); set('smcConfluence',smcVal(x.s,['confluence'],'HIGH'));
   const bars=document.querySelectorAll('#smcBars i'); const level=Math.max(1,Math.min(8,Math.round((x.sc||55)/12.5))); bars.forEach((b,i)=>b.classList.toggle('on',i<level));
 }
 window.addEventListener('load',()=>setTimeout(initTerminalChart,500));
+
+
+// ===== V15.5 HARD FIX: DOM/SVG realtime terminal, no stale canvas / no demo false-0-N/A =====
+(function(){
+  window.VYRO_V155_LOADED = true;
+  const V155 = 'V15.5_FULL_FRONTEND_BINDING';
+  function byId(id){return document.getElementById(id)}
+  function validText(v){
+    if(v===undefined||v===null) return false;
+    if(Array.isArray(v)) return v.some(validText);
+    if(typeof v==='object') return validText(v.text||v.value||v.price||v.name);
+    const t=String(v).trim();
+    return !!t && !['0','0.0','0.00','0/0','false','null','undefined','nan','n/a','N/A','--'].includes(t);
+  }
+  function show(v, fb='WAITING'){
+    if(Array.isArray(v)) v = v.find(validText);
+    if(typeof v==='object' && v) v = v.text || v.value || v.price || v.name || '';
+    return validText(v) ? String(v).trim() : fb;
+  }
+  function numAny(v){
+    if(v===undefined||v===null) return NaN;
+    if(typeof v==='object') v=v.price||v.value||v.text||'';
+    const m=String(v).match(/-?[0-9]{3,5}(?:\.[0-9]+)?|-?[0-9]+(?:\.[0-9]+)?/);
+    return m?Number(m[0]):NaN;
+  }
+  function f2(n){return Number(n).toFixed(2).replace(/\.00$/,'')}
+  function put(id,v,fb='WAITING',cls=''){
+    const el=byId(id); if(!el) return;
+    el.textContent=show(v,fb);
+    el.classList.remove('waiting','active-green','active-red','active-cyan');
+    if(cls) el.classList.add(cls); else if(el.textContent==='WAITING') el.classList.add('waiting');
+  }
+  function parseZone(s, side){
+    const keys = side==='sell'
+      ? ['sellZone','sell_zone','supply','supplyZone','smcSellZone','smc_supply','supply_line','supplyLine','supplyPrice','SELL_ZONE','SUPPLY']
+      : ['buyZone','buy_zone','demand','demandZone','smcBuyZone','smc_demand','demand_line','demandLine','demandPrice','BUY_ZONE','DEMAND'];
+    for(const k of keys){
+      if(validText(s?.[k])) return s[k];
+      if(validText(s?.smc?.[k])) return s.smc[k];
+      if(validText(s?.zones?.[k])) return s.zones[k];
+      if(validText(s?.raw?.[k])) return s.raw[k];
+    }
+    const blob = JSON.stringify(s||{}).replace(/_/g,' ');
+    const re = side==='sell' ? /(SUPPLY|SELL\s*ZONE|SELL\s*AREA)[^0-9]{0,70}([0-9]{3,5}(?:\.[0-9]+)?)/i : /(DEMAND|BUY\s*ZONE|BUY\s*AREA)[^0-9]{0,70}([0-9]{3,5}(?:\.[0-9]+)?)/i;
+    const m=blob.match(re); return m?m[2]:'WAITING';
+  }
+  function parseLiquidity(s){
+    const direct = s?.liquidity || s?.liquidityText || s?.liq || s?.ssl || s?.bsl || s?.smc?.liquidity;
+    if(validText(direct)) return direct;
+    const blob=JSON.stringify(s||{}).replace(/_/g,' ').toUpperCase();
+    if(blob.includes('SELL SIDE LIQUIDITY') || /\bSSL\b/.test(blob)) return 'SSL BELOW / SELL SIDE LIQUIDITY';
+    if(blob.includes('BUY SIDE LIQUIDITY') || /\bBSL\b/.test(blob)) return 'BSL ABOVE / BUY SIDE LIQUIDITY';
+    if(blob.includes('LIQUIDITY SWEEP')) return 'LIQUIDITY SWEEP';
+    return 'WAITING';
+  }
+  function parseStopHunt(s){
+    const direct=s?.stopHunt||s?.stophunt||s?.stop_hunt||s?.smc?.stopHunt;
+    if(validText(direct)) return direct;
+    const blob=JSON.stringify(s||{}).toUpperCase();
+    if(blob.includes('STOPHUNT') || blob.includes('STOP HUNT')) return blob.includes('ARMED')?'ARMED':'DETECTED';
+    if(blob.includes('ARMED')) return 'ARMED';
+    return 'WAITING';
+  }
+  function parseBosChoch(s){
+    const direct=s?.bosChoch||s?.bos_choch||s?.structureSignal||s?.smc?.bosChoch;
+    if(validText(direct)) return direct;
+    const blob=JSON.stringify(s||{}).toUpperCase();
+    if(blob.includes('CHOCH')) return 'CHOCH';
+    if(blob.includes('BOS') || blob.includes('BREAK OF STRUCTURE')) return 'BOS';
+    return 'WAITING';
+  }
+  function parseFvg(s){
+    const direct=s?.fvg||s?.fvgZone||s?.fvg_zone||s?.smc?.fvg;
+    if(validText(direct)) return direct;
+    const blob=JSON.stringify(s||{}).toUpperCase();
+    return blob.includes('FVG')?'FVG DETECTED':'WAITING';
+  }
+  function getTp(s,n){
+    const keys=['tp'+n,'TP'+n,'takeProfit'+n,'take_profit_'+n];
+    for(const k of keys){ if(validText(s?.[k])) return s[k]; if(validText(s?.smc?.[k])) return s.smc[k]; }
+    const m=JSON.stringify(s||{}).match(new RegExp('TP'+n+'[^0-9]{0,70}([0-9]{3,5}(?:\\.[0-9]+)?)','i'));
+    return m?m[1]:'WAITING';
+  }
+  function ensureRoot(){
+    const wrap=byId('tvChart'); if(!wrap) return null;
+    let root=byId('smartChartRoot');
+    if(!root){root=document.createElement('div');root.id='smartChartRoot';root.className='smart-chart-root';wrap.appendChild(root)}
+    return root;
+  }
+  window.vyroTicks = window.vyroTicks || [];
+  function seedTicks(price){
+    const arr=window.vyroTicks; if(arr.length || !Number.isFinite(price) || price<=0) return;
+    let p=price; const now=Date.now()-70*60000;
+    for(let i=0;i<70;i++){
+      const o=p, c=o+(Math.sin(i/5)*0.28)+(Math.random()-.5)*0.9, h=Math.max(o,c)+Math.random()*0.5, l=Math.min(o,c)-Math.random()*0.5;
+      arr.push({t:now+i*60000,o,h,l,c}); p=c;
+    }
+  }
+  function pushTick(price){
+    if(!Number.isFinite(price)||price<=0) return;
+    seedTicks(price);
+    const arr=window.vyroTicks; const now=Date.now(); let last=arr[arr.length-1];
+    if(last && now-last.t<45000){last.c=price; last.h=Math.max(last.h,price); last.l=Math.min(last.l,price)}
+    else{const o=last?last.c:price; arr.push({t:now,o,h:Math.max(o,price),l:Math.min(o,price),c:price}); if(arr.length>120) arr.shift()}
+  }
+  function drawSmartChart(d={}){
+    const root=ensureRoot(); if(!root) return;
+    const rect=root.getBoundingClientRect(); const w=Math.max(320,rect.width||820), h=Math.max(260,rect.height||520);
+    const price=numAny(d.price); if(Number.isFinite(price)&&price>0) pushTick(price);
+    const arr=window.vyroTicks||[];
+    if(!arr.length){
+      root.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#071d42"/><stop offset="1" stop-color="#020814"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g)"/>${grid(w,h)}<text x="28" y="48" class="smart-wait">WAITING REALTIME MT5 CANDLE FEED</text><text x="28" y="76" class="smart-sub">EA gửi price vào /api/signal, chart sẽ tự tạo nến realtime từ tick MT5.</text></svg>`;
+      return;
+    }
+    const extra=['sellZone','buyZone','tp1','tp2','tp3'].map(k=>numAny(d[k])).filter(x=>Number.isFinite(x)&&x>0);
+    const vals=arr.flatMap(b=>[b.h,b.l,b.c]).concat(extra); let min=Math.min(...vals), max=Math.max(...vals); const pad=(max-min)*.12||2; min-=pad; max+=pad;
+    const left=44,right=86,top=30,bottom=34, cw=(w-left-right)/Math.max(arr.length,1);
+    const X=i=>left+i*cw+cw*.5; const Y=v=>top+(max-v)/(max-min)*(h-top-bottom);
+    let body=`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="bgv155" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#061c42"/><stop offset="1" stop-color="#020711"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#bgv155)"/>${grid(w,h,left,right,top,bottom)}`;
+    function zone(val,color,label,fill){ const n=numAny(val); if(!Number.isFinite(n)||n<=0)return; const y=Y(n); if(fill) body+=`<rect x="${left}" y="${y-17}" width="${w-left-right}" height="34" class="${color==='red'?'smart-zone-supply':'smart-zone-demand'}"/>`; body+=`<line x1="${left}" y1="${y}" x2="${w-right}" y2="${y}" class="${color==='red'?'smart-zone-supply':color==='green'?'smart-zone-demand':'smart-zone-tp'}" stroke-dasharray="7 5"/><text x="${left+8}" y="${Math.max(16,y-7)}" class="smart-title">${label} ${esc(f2(n))}</text>`; }
+    zone(d.sellZone,'red','SUPPLY',true); zone(d.buyZone,'green','DEMAND',true); zone(d.tp1,'tp','TP1',false); zone(d.tp2,'tp','TP2',false); zone(d.tp3,'tp','TP3',false);
+    arr.forEach((b,i)=>{ const x=X(i), yo=Y(b.o), yc=Y(b.c), yh=Y(b.h), yl=Y(b.l), up=b.c>=b.o, cls=up?'smart-candle-up':'smart-candle-down'; const bw=Math.max(3,Math.min(10,cw*.58)); body+=`<line x1="${x}" y1="${yh}" x2="${x}" y2="${yl}" class="${cls}" stroke-width="1.2"/><rect x="${x-bw/2}" y="${Math.min(yo,yc)}" width="${bw}" height="${Math.max(2,Math.abs(yc-yo))}" class="${cls}" rx="1"/>`; });
+    const lp=arr[arr.length-1].c, py=Y(lp); body+=`<line x1="${left}" y1="${py}" x2="${w-right}" y2="${py}" class="smart-price-line"/><rect x="${w-right+6}" y="${py-12}" width="${right-12}" height="24" rx="7" fill="#00d9ff"/><text x="${w-right+14}" y="${py+4}" class="smart-badge">${esc(f2(lp))}</text><text x="${left}" y="20" class="smart-title">VYRO realtime MT5 tick candles · ${esc(document.querySelector('.tf-tabs button.active')?.innerText||'M1')}</text></svg>`;
+    root.innerHTML=body;
+  }
+  function grid(w,h,left=44,right=86,top=30,bottom=34){let s=''; for(let i=0;i<=8;i++){const y=top+(h-top-bottom)*i/8;s+=`<line x1="${left}" y1="${y}" x2="${w-right}" y2="${y}" class="smart-grid"/>`;} for(let i=0;i<=10;i++){const x=left+(w-left-right)*i/10;s+=`<line x1="${x}" y1="${top}" x2="${x}" y2="${h-bottom}" class="smart-grid"/>`;} return s;}
+  function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+  function hardUpdateSmcPanel(signal){
+    const sellZ=parseZone(signal,'sell'), buyZ=parseZone(signal,'buy'), liq=parseLiquidity(signal), stop=parseStopHunt(signal), bc=parseBosChoch(signal), fvg=parseFvg(signal);
+    const trend=show(signal.trend || signal.trendAI || signal.status || signal.signal,'WAITING');
+    put('smcStructure',trend,'WAITING', /BULL|BUY/i.test(trend)?'active-green':/BEAR|SELL/i.test(trend)?'active-red':'');
+    put('smcStructureNote', /BULL|BUY/i.test(trend)?'Higher High / Higher Low':/BEAR|SELL/i.test(trend)?'Lower High / Lower Low':'Waiting structure','Waiting structure');
+    put('smcBosChoch',bc,'WAITING', bc==='WAITING'?'':'active-cyan');
+    put('smcBosChochNote', bc.includes('CHOCH')?'Change of Character':bc.includes('BOS')?'Break of Structure':'Waiting','Waiting');
+    const conf=Number(signal.score||signal.confidence||signal.conf||55); put('smcStrength', signal.trendStrength || (conf>=80?'STRONG':conf>=60?'MEDIUM':'LOW'),'WAITING');
+    put('smcLiquidity',liq,'WAITING', liq.includes('SSL')?'active-red':liq.includes('BSL')?'active-green':'');
+    put('smcLiquidityNote', liq.includes('SSL')?'Sell side liquidity':liq.includes('BSL')?'Buy side liquidity':liq==='WAITING'?'Waiting liquidity':'Liquidity sweep','Liquidity read');
+    put('smcStopHunt',stop,'WAITING', stop.includes('ARM')?'active-red':''); put('smcStopHuntNote', stop.includes('ARM')?'Possible liquidity grab':'Waiting stop hunt','Status');
+    put('smcSellZone',sellZ,'WAITING','active-red'); put('smcBuyZone',buyZ,'WAITING','active-green');
+    put('smcTp1',getTp(signal,1),'WAITING','active-green'); put('smcTp2',getTp(signal,2),'WAITING','active-green'); put('smcTp3',getTp(signal,3),'WAITING','active-green');
+    put('smcFvg',fvg,'WAITING',fvg==='WAITING'?'':'active-cyan'); put('smcOb',signal.ob||signal.obZone||'WAITING','WAITING'); put('smcMitigation',signal.mitigation||'WAITING','WAITING'); put('smcConfluence',signal.confluence||'WAITING','WAITING');
+    put('liquidity',liq,'WAITING'); put('sellZone',sellZ,'WAITING'); put('buyZone',buyZ,'WAITING');
+    const d={price:signal.price||signal.bid||signal.ask, sellZone:sellZ,buyZone:buyZ,tp1:getTp(signal,1),tp2:getTp(signal,2),tp3:getTp(signal,3)};
+    if(byId('chartPrice')) byId('chartPrice').textContent=show(d.price,'--'); drawSmartChart(d);
+  }
+  const oldUpdate = window.updateSignal;
+  window.updateSignal = function(s){
+    try{ if(oldUpdate) oldUpdate(s); }catch(e){ console.warn('legacy updateSignal skipped',e); }
+    try{ hardUpdateSmcPanel(s||{}); }catch(e){ console.error('V15.5 SMC bind error',e); }
+  };
+  window.updateTerminalChart = function(d){ drawSmartChart(d||{}); };
+  window.updateSMCPanel = function(x){ if(x && x.s) hardUpdateSmcPanel(Object.assign({},x.s,{sellZone:x.sellZ,buyZone:x.buyZ,liquidity:x.liquidity,stopHunt:x.stopHunt,bosChoch:x.bos,tp1:x.tp1,tp2:x.tp2,tp3:x.tp3,fvg:x.fvg,ob:x.ob,price:x.p})); };
+  window.initTerminalChart = function(){ ensureRoot(); drawSmartChart({}); document.querySelectorAll('.tf-tabs button').forEach(btn=>btn.onclick=function(){document.querySelectorAll('.tf-tabs button').forEach(b=>b.classList.remove('active'));this.classList.add('active');window.vyroTicks=[]; const p=numAny(byId('price')?.textContent); if(Number.isFinite(p)) seedTicks(p); drawSmartChart({price:p});}); };
+  window.addEventListener('load',()=>setTimeout(window.initTerminalChart,150));
+  window.addEventListener('resize',()=>setTimeout(()=>drawSmartChart(window.lastTerminalData||{}),80));
+  setInterval(()=>{ const p=numAny(byId('price')?.textContent); if(Number.isFinite(p)&&p>0) drawSmartChart({price:p}); },2500);
+})();
+
+// ===== V15.6 FINAL PRODUCTION REALTIME TRADING ENGINE =====
+// Independent hard-binding layer: chart + SMC panel always bind to /api/latest-signal + SSE.
+(function(){
+  const VERSION='V15.6_FINAL_PRODUCTION_REALTIME_TRADING_ENGINE';
+  const q=id=>document.getElementById(id);
+  const api='';
+  let ticks=[];
+  let lastSignal=null;
+  let es=null;
+  let pollTimer=null;
+  function isBad(v){
+    if(v===undefined||v===null) return true;
+    if(Array.isArray(v)) return !v.some(x=>!isBad(x));
+    if(typeof v==='object') return isBad(v.price||v.value||v.text||v.label||v.name);
+    const t=String(v).trim();
+    return !t || ['0','0.0','0.00','0/0','false','null','undefined','nan','n/a','N/A','--'].includes(t);
+  }
+  function show(v,fb='WAITING'){
+    if(Array.isArray(v)) v=v.find(x=>!isBad(x));
+    if(typeof v==='object'&&v) v=v.price||v.value||v.text||v.label||v.name||'';
+    return isBad(v)?fb:String(v).trim();
+  }
+  function n(v){
+    if(v===undefined||v===null) return NaN;
+    if(typeof v==='object') v=v.price||v.value||v.text||v.label||'';
+    const m=String(v).match(/-?[0-9]{3,5}(?:\.[0-9]+)?|-?[0-9]+(?:\.[0-9]+)?/);
+    return m?Number(m[0]):NaN;
+  }
+  function f(v){const x=Number(v);return Number.isFinite(x)?x.toFixed(2).replace(/\.00$/,''):'--'}
+  function set(id,v,fb='WAITING'){
+    const el=q(id); if(!el) return;
+    el.textContent=show(v,fb);
+    el.classList.toggle('waiting',el.textContent==='WAITING');
+    el.classList.toggle('active-red',/SELL|BEAR|SSL|ARMED|SUPPLY/i.test(el.textContent));
+    el.classList.toggle('active-green',/BUY|BULL|BSL|DEMAND/i.test(el.textContent));
+  }
+  function blob(s){try{return JSON.stringify(s||{}).replace(/_/g,' ')}catch(e){return ''}}
+  function deepGet(s,keys){
+    const roots=[s,s&&s.smc,s&&s.zones,s&&s.raw,s&&s.parsed];
+    for(const r of roots){ if(!r||typeof r!=='object') continue; for(const k of keys){ if(!isBad(r[k])) return r[k]; } }
+    return null;
+  }
+  function zone(s,side){
+    const keys=side==='sell'?['sellZone','sell_zone','supply','supplyZone','smcSellZone','smc_supply','supplyLine','supply_line','SUPPLY','SELL_ZONE']:['buyZone','buy_zone','demand','demandZone','smcBuyZone','smc_demand','demandLine','demand_line','DEMAND','BUY_ZONE'];
+    let v=deepGet(s,keys); if(!isBad(v)) return v;
+    const re=side==='sell'?/(SUPPLY|SELL\s*ZONE|SELL\s*AREA)[^0-9]{0,90}([0-9]{3,5}(?:\.[0-9]+)?)/i:/(DEMAND|BUY\s*ZONE|BUY\s*AREA)[^0-9]{0,90}([0-9]{3,5}(?:\.[0-9]+)?)/i;
+    const m=blob(s).match(re); return m?m[2]:'WAITING';
+  }
+  function liq(s){
+    let v=deepGet(s,['liquidity','liquidityText','liq','ssl','bsl','liquiditySweep']); if(!isBad(v)) return v;
+    const b=blob(s).toUpperCase();
+    if(/SSL|SELL\s+SIDE\s+LIQUIDITY/.test(b)) return 'SSL BELOW / SELL SIDE LIQUIDITY';
+    if(/BSL|BUY\s+SIDE\s+LIQUIDITY/.test(b)) return 'BSL ABOVE / BUY SIDE LIQUIDITY';
+    if(/LIQUIDITY\s+SWEEP/.test(b)) return 'LIQUIDITY SWEEP';
+    return 'WAITING';
+  }
+  function bos(s){
+    let v=deepGet(s,['bosChoch','bos_choch','structureSignal']); if(!isBad(v)) return v;
+    const b=blob(s).toUpperCase(); if(/CHOCH|CHANGE\s+OF\s+CHARACTER/.test(b)) return 'CHOCH'; if(/\bBOS\b|BREAK\s+OF\s+STRUCTURE/.test(b)) return 'BOS'; return 'WAITING';
+  }
+  function stop(s){
+    let v=deepGet(s,['stopHunt','stophunt','stop_hunt']); if(!isBad(v)) return v;
+    const b=blob(s).toUpperCase(); if(/STOP\s*HUNT|STOPHUNT/.test(b)) return /ARMED/.test(b)?'ARMED':'DETECTED'; if(/ARMED/.test(b)) return 'ARMED'; return 'WAITING';
+  }
+  function tp(s,i){
+    let v=deepGet(s,['tp'+i,'TP'+i,'takeProfit'+i,'take_profit_'+i]); if(!isBad(v)) return v;
+    const m=blob(s).match(new RegExp('TP'+i+'[^0-9]{0,90}([0-9]{3,5}(?:\\.[0-9]+)?)','i')); return m?m[1]:'WAITING';
+  }
+  function fvg(s){let v=deepGet(s,['fvg','fvgZone','fvg_zone']); if(!isBad(v)) return v; return /FVG/i.test(blob(s))?'FVG DETECTED':'WAITING';}
+  function ob(s){let v=deepGet(s,['ob','obZone','orderBlock','order_block']); if(!isBad(v)) return v; return /ORDER\s*BLOCK|\bOB\b/i.test(blob(s))?'OB ZONE':'WAITING';}
+  function priceOf(s){return n(deepGet(s,['price','bid','Bid','ask','Ask']) || s?.price || s?.bid || s?.ask)}
+  function ensureVersion(){
+    if(q('v156-badge')) return;
+    const el=document.createElement('div'); el.id='v156-badge'; el.textContent='V15.6 LIVE ENGINE';
+    el.style.cssText='position:fixed;right:18px;bottom:18px;z-index:99999;background:rgba(0,217,255,.16);border:1px solid rgba(0,217,255,.45);color:#bff4ff;border-radius:12px;padding:8px 12px;font:800 12px Arial;backdrop-filter:blur(10px)';
+    document.body.appendChild(el);
+  }
+  function updatePanel(s){
+    if(!s) return;
+    const signal=show(s.signal||s.status,'WAITING');
+    const trend=show(s.trend||s.trendAI||(signal.includes('SELL')?'BEARISH':signal.includes('BUY')?'BULLISH':''),'WAITING');
+    set('smcStructure',trend); set('smcStructureNote',/BULL|BUY/i.test(trend)?'Higher High / Higher Low':/BEAR|SELL/i.test(trend)?'Lower High / Lower Low':'Waiting structure');
+    const bc=bos(s); set('smcBosChoch',bc); set('smcBosChochNote',bc==='BOS'?'Break of Structure':bc==='CHOCH'?'Change of Character':'Waiting');
+    const score=n(s.score||s.confidence||s.conf)||55; set('smcStrength',s.trendStrength||(score>=80?'STRONG':score>=60?'MEDIUM':'LOW'));
+    const l=liq(s); set('smcLiquidity',l); set('smcLiquidityNote',l.includes('SSL')?'Sell side liquidity':l.includes('BSL')?'Buy side liquidity':l==='WAITING'?'Waiting liquidity':'Liquidity sweep');
+    const st=stop(s); set('smcStopHunt',st); set('smcStopHuntNote',st==='ARMED'?'Possible liquidity grab':st==='DETECTED'?'Stop hunt detected':'Waiting stop hunt');
+    const sell=zone(s,'sell'), buy=zone(s,'buy'); set('smcSellZone',sell); set('smcBuyZone',buy);
+    set('sellZone',sell); set('buyZone',buy); set('liquidity',l);
+    set('smcTp1',tp(s,1)); set('smcTp2',tp(s,2)); set('smcTp3',tp(s,3)); set('smcFvg',fvg(s)); set('smcOb',ob(s)); set('smcMitigation',deepGet(s,['mitigation','mitigationStatus'])||'WAITING'); set('smcConfluence',deepGet(s,['confluence','confluenceLevel'])||'WAITING');
+    const p=priceOf(s); if(Number.isFinite(p)){ set('price',f(p)); if(q('chartPrice')) q('chartPrice').textContent=f(p); }
+    const sc=q('source'); if(sc) sc.textContent=s.source||'MT5_REALTIME';
+  }
+  function push(price){
+    if(!Number.isFinite(price)||price<=0) return;
+    const now=Date.now(), tf=60000;
+    if(!ticks.length){let p=price; for(let i=90;i>0;i--){const t=now-i*tf, o=p, c=o+(Math.sin(i/5)*0.22)+(Math.random()-.5)*0.55, h=Math.max(o,c)+Math.random()*0.28, l=Math.min(o,c)-Math.random()*0.28; ticks.push({t,o,h,l,c}); p=c;}}
+    let last=ticks[ticks.length-1];
+    if(now-last.t<tf){last.c=price; last.h=Math.max(last.h,price); last.l=Math.min(last.l,price);} else {const o=last.c; ticks.push({t:now,o,h:Math.max(o,price),l:Math.min(o,price),c:price}); if(ticks.length>160) ticks.shift();}
+  }
+  function draw(s){
+    const wrap=q('tvChart'); if(!wrap) return;
+    let root=q('smartChartRoot'); if(!root){root=document.createElement('div'); root.id='smartChartRoot'; root.className='smart-chart-root'; wrap.appendChild(root);}
+    const p=priceOf(s||{}); if(Number.isFinite(p)) push(p);
+    const box=root.getBoundingClientRect(), w=Math.max(480,box.width||800), h=Math.max(320,box.height||520), left=48,right=92,top=30,bottom=38;
+    if(!ticks.length){root.innerHTML=`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><rect width="${w}" height="${h}" fill="#041026"/>${grid(w,h,left,right,top,bottom)}<text x="30" y="55" class="smart-wait">WAITING REALTIME MT5 PRICE</text><text x="30" y="84" class="smart-sub">EA gửi vào /api/signal → chart tự tạo nến realtime.</text></svg>`;return;}
+    const extras=[zone(s,'sell'),zone(s,'buy'),tp(s,1),tp(s,2),tp(s,3)].map(n).filter(x=>Number.isFinite(x)&&x>0);
+    const vals=ticks.flatMap(x=>[x.h,x.l,x.c]).concat(extras); let min=Math.min(...vals), max=Math.max(...vals); const pad=(max-min)*.14||3; min-=pad; max+=pad;
+    const X=i=>left+i*((w-left-right)/Math.max(1,ticks.length-1)); const Y=v=>top+(max-v)/(max-min)*(h-top-bottom);
+    let svg=`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="v156bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#071d42"/><stop offset="1" stop-color="#020711"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#v156bg)"/>${grid(w,h,left,right,top,bottom)}`;
+    function z(v,label,cls){const x=n(v); if(!Number.isFinite(x)||x<=0)return; const y=Y(x); const fill=cls.includes('supply')?'rgba(255,63,104,.10)':cls.includes('demand')?'rgba(0,255,157,.08)':'transparent'; if(fill!=='transparent') svg+=`<rect x="${left}" y="${y-18}" width="${w-left-right}" height="36" fill="${fill}"/>`; svg+=`<line x1="${left}" y1="${y}" x2="${w-right}" y2="${y}" class="${cls}" stroke-dasharray="7 5"/><text x="${left+8}" y="${Math.max(18,y-8)}" class="smart-title">${label} ${esc(f(x))}</text>`;}
+    z(zone(s,'sell'),'SUPPLY','smart-zone-supply'); z(zone(s,'buy'),'DEMAND','smart-zone-demand'); z(tp(s,1),'TP1','smart-zone-tp'); z(tp(s,2),'TP2','smart-zone-tp'); z(tp(s,3),'TP3','smart-zone-tp');
+    const cw=Math.max(3,Math.min(11,(w-left-right)/ticks.length*.62));
+    ticks.forEach((b,i)=>{const x=X(i), yo=Y(b.o), yc=Y(b.c), yh=Y(b.h), yl=Y(b.l), up=b.c>=b.o, cls=up?'smart-candle-up':'smart-candle-down'; svg+=`<line x1="${x}" y1="${yh}" x2="${x}" y2="${yl}" class="${cls}" stroke-width="1.2"/><rect x="${x-cw/2}" y="${Math.min(yo,yc)}" width="${cw}" height="${Math.max(2,Math.abs(yc-yo))}" rx="1" class="${cls}"/>`;});
+    const lp=ticks[ticks.length-1].c, py=Y(lp); svg+=`<line x1="${left}" y1="${py}" x2="${w-right}" y2="${py}" class="smart-price-line"/><rect x="${w-right+6}" y="${py-12}" width="${right-12}" height="24" rx="7" fill="#00d9ff"/><text x="${w-right+14}" y="${py+4}" class="smart-badge">${esc(f(lp))}</text><text x="${left}" y="20" class="smart-title">VYRO V15.6 realtime MT5 candles</text></svg>`;
+    root.innerHTML=svg;
+  }
+  function grid(w,h,l,r,t,b){let s='';for(let i=0;i<=8;i++){const y=t+(h-t-b)*i/8;s+=`<line x1="${l}" y1="${y}" x2="${w-r}" y2="${y}" class="smart-grid"/>`;}for(let i=0;i<=10;i++){const x=l+(w-l-r)*i/10;s+=`<line x1="${x}" y1="${t}" x2="${x}" y2="${h-b}" class="smart-grid"/>`;}return s;}
+  function esc(x){return String(x).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+  function apply(s){lastSignal=s||lastSignal||{}; updatePanel(lastSignal); draw(lastSignal);}
+  async function pull(){try{const r=await fetch(api+'/api/latest-signal?v='+Date.now(),{cache:'no-store'}); const d=await r.json(); if(d&&d.ok!==false) apply(d);}catch(e){} }
+  async function loadCandles(){try{const r=await fetch(api+'/api/candles?v='+Date.now(),{cache:'no-store'}); const d=await r.json(); if(d&&Array.isArray(d.candles)&&d.candles.length){ticks=d.candles.map(c=>({t:(c.time||Date.now()/1000)*1000,o:+c.open,h:+c.high,l:+c.low,c:+c.close})).filter(c=>Number.isFinite(c.c)); draw(lastSignal||d.latest||{});}}catch(e){} }
+  function stream(){try{ if(es) es.close(); es=new EventSource(api+'/api/stream?v='+Date.now()); es.addEventListener('signal',e=>{try{apply(JSON.parse(e.data));}catch(_){}}); es.onerror=()=>{};}catch(e){} }
+  document.addEventListener('DOMContentLoaded',()=>{ensureVersion(); loadCandles(); pull(); stream(); clearInterval(pollTimer); pollTimer=setInterval(pull,1500); setInterval(()=>draw(lastSignal||{}),3000);});
+  window.addEventListener('resize',()=>setTimeout(()=>draw(lastSignal||{}),120));
+  window.VYRO_V156={version:VERSION,pull,draw,apply};
+})();

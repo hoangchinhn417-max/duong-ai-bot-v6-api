@@ -6,9 +6,8 @@
   <title>VYRO PRO - AI Trading System</title>
   <meta name="description" content="VYRO PRO - AI Trading System, Smart Flow, Signal Dashboard, Admin User Management." />
   <link rel="icon" href="./assets/vyro-logo.jpeg?v=1361" />
-  <link rel="stylesheet" href="style.css?v=15.0.0" />
-  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
-</head>
+  <link rel="stylesheet" href="style.css?v=15.5.0-prod" />
+  </head>
 <body>
   <div class="glow a"></div><div class="glow b"></div><div class="grid-bg"></div>
 
@@ -102,12 +101,12 @@
       <div class="chart-area">
         <div class="panel-head terminal-head">
           <div>
-            <h3>VYRO TradingView Terminal</h3>
-            <small>Realtime chart + SMC overlay từ MT5 EA Bridge</small>
+            <h3>VYRO Realtime SMC Terminal</h3>
+            <small>Full realtime chart + SMC overlay từ MT5 EA Bridge</small>
           </div>
           <div class="tf-tabs"><button class="active">M1</button><button>M5</button><button>M15</button><button>H1</button></div>
         </div>
-        <div id="tvChart" class="tv-chart"><canvas id="fallbackChart"></canvas></div>
+        <div id="tvChart" class="tv-chart"><canvas id="fallbackChart"></canvas><div id="smartChartRoot" class="smart-chart-root"></div></div>
         <div class="chart-legend">
           <span class="red-dot">Supply</span><span class="green-dot">Demand</span><span class="blue-dot">FVG</span><span class="yellow-dot">No Trade</span><span>Live price: <b id="chartPrice">--</b></span>
         </div>
@@ -155,7 +154,7 @@
         <div class="panel-head"><h3>Smart Flow Read</h3><span>FLOW + DELTA</span></div>
         <div class="flow-box"><span>Dominance</span><b id="dominance">Mixed</b><small id="dominanceNote">Waiting smart flow</small></div>
         <div class="zone red"><span>SELL ZONE / SUPPLY</span><b id="sellZone">--</b><small>SMC Supply từ bot</small></div>
-        <div class="zone yellow"><span>NO TRADE</span><b>4515 - 4525</b><small>Mid range chop</small></div>
+        <div class="zone yellow"><span>NO TRADE</span><b id="noTradeZone">WAITING</b><small>Mid range chop</small></div>
         <div class="zone green"><span>BUY ZONE / DEMAND</span><b id="buyZone">--</b><small>SMC Demand từ bot</small></div>
       </article>
     </section>
@@ -219,6 +218,6 @@
     </div>
   </div>
   <div id="toast" class="toast">Done</div>
-  <script src="script.js?v=14.2.0"></script>
+    <script src="script.js?v=15.5.0-prod-20260528"></script>
 </body>
 </html>
