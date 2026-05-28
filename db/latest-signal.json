@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "received": true,
+  "symbol": "XAUUSD",
+  "signal": "WAIT",
+  "status": "WAIT",
+  "rsi": null,
+  "flow": null,
+  "delta": null,
+  "power": null,
+  "buySell": "0/0",
+  "conf": 55,
+  "pressure": "WAIT",
+  "liquidity": "Waiting",
+  "updatedAt": "2026-05-28T00:00:00.000Z"
+}
