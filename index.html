@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VYRO PRO - AI Trading System</title>
+  <meta name="description" content="VYRO PRO - AI Trading System, Smart Flow, Signal Dashboard, Admin User Management." />
+  <link rel="icon" href="./assets/vyro-logo.jpeg?v=1361" />
+  <link rel="stylesheet" href="style.css?v=15.0.0" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <div class="glow a"></div><div class="glow b"></div><div class="grid-bg"></div>
+
+  <section id="login" class="login">
+    <div class="login-card">
+      <div class="login-logo-wrap"><img src="./assets/vyro-logo.jpeg?v=1361" alt="VYRO PRO" class="login-logo" onerror="this.outerHTML='<div class=&quot;logoFallback loginFallback&quot;>VYRO<span>PRO</span><small>AI TRADING SYSTEM</small></div>'"></div>
+
+      <div class="tabs">
+        <button id="tabLogin" class="active" onclick="switchTab('login')"><span>↪</span> Đăng nhập</button>
+        <button id="tabReg" onclick="switchTab('reg')"><span>♙</span> Đăng ký khách</button>
+      </div>
+
+      <div id="loginForm">
+        <label>Tài khoản</label>
+        <div class="input-wrap"><span>♙</span><input id="loginUser" autocomplete="username" placeholder="Nhập tài khoản"></div>
+        <label>Mật khẩu</label>
+        <div class="input-wrap"><span>▣</span><input id="loginPass" autocomplete="current-password" type="password" placeholder="Nhập mật khẩu"><button class="eye" type="button" onclick="togglePass('loginPass')">⌧</button></div>
+        <button id="loginBtn" class="primary full" onclick="loginNow()"><span id="loginBtnText">Vào hệ thống</span></button>
+        <button class="ghost full mini" onclick="showForgot()">🛡 Quên mật khẩu?</button>
+        <div class="feature-row"><div><b>PRECISION</b><small>Độ chính xác cao</small></div><div><b>INTELLIGENCE</b><small>AI thông minh</small></div><div><b>EXECUTION</b><small>Thực thi tối ưu</small></div></div>
+      </div>
+
+      <div id="regForm" class="hidden">
+        <label>Họ tên</label><input id="regName" placeholder="Nguyễn Văn A">
+        <label>Số điện thoại / Username</label><input id="regUser" placeholder="090...">
+        <label>Email</label><input id="regEmail" placeholder="email@gmail.com">
+        <label>Mật khẩu</label><input id="regPass" type="password" placeholder="Tạo mật khẩu">
+        <label>Gói đăng ký</label>
+        <select id="regPlan"><option value="basic">Basic AI</option><option value="pro" selected>Pro AI</option><option value="vip">VIP Smart Flow</option></select>
+        <button class="primary full" onclick="registerNow()">Tạo tài khoản</button>
+        <small>Tài khoản mới sẽ ở trạng thái chờ duyệt.</small>
+      </div>
+    </div>
+  </section>
+
+  <aside id="sidebar" class="sidebar hidden">
+    <div class="brand"><img src="./assets/vyro-logo.jpeg?v=1361" alt="VYRO" class="brand-img" onerror="this.outerHTML='<div class=&quot;logoFallback sideFallback&quot;>VYRO<span>PRO</span></div>'"></div>
+    <div class="card account-card"><span>Account</span><strong id="accountName">---</strong><small id="accountPlan">---</small><small id="accountExpire">---</small></div>
+    <div class="card api"><span>API Status</span><strong><i></i><em id="apiStatusText">ONLINE</em></strong><small>MT5 realtime bridge</small></div>
+    <nav>
+      <a href="#terminal" class="active">⌂ Tổng quan</a>
+      <a href="#stream">◉ Smart Flow</a>
+      <a href="#history">▤ Signal History</a>
+      <a href="#smc-system">◆ SMC System</a>
+      <a href="#affiliate">◇ Affiliate</a>
+      <a href="#admin" id="adminLink" class="hidden">⚙ Admin quản trị</a>
+    </nav>
+    <button class="logout" onclick="logout()">Đăng xuất</button>
+  </aside>
+
+  <main id="app" class="main hidden">
+    <header class="topbar">
+      <div><p class="eyebrow">VYRO PRO · SMART FLOW REALTIME ENGINE</p><h1>AI Trading Control Panel</h1></div>
+      <div class="top-actions"><span class="live"><i></i> LIVE</span><button id="topAdminBtn" class="ghost hidden" onclick="openAdmin()">Mở Admin</button></div>
+    </header>
+
+    <section class="hero brand-hero">
+      <div>
+        <h2>VYRO PRO</h2>
+        <p>AI Trading System ứng dụng Smart Flow, Delta, Volume và tín hiệu MT5 realtime.</p>
+      </div>
+      <img src="./assets/vyro-logo.jpeg?v=1361" alt="VYRO PRO" class="hero-logo" onerror="this.outerHTML='<div class=&quot;logoFallback heroFallback&quot;>VYRO<span>PRO</span><small>AI TRADING SYSTEM</small></div>'">
+    </section>
+
+    <section id="terminal" class="hero signal-hero">
+      <div>
+        <span id="marketTag" class="tag">XAUUSD · MT5 SMART FLOW</span>
+        <h2 id="signal">WAIT</h2>
+        <p id="reason">Đang chờ tín hiệu realtime từ MT5.</p>
+        <div class="btns"><button class="primary" onclick="pullLatest()">Pull Latest Signal</button><button class="ghost" onclick="copySignal()">Copy Signal</button></div>
+      </div>
+      <div id="ring" class="ring"><div><strong id="score">55</strong><small>AI SCORE</small></div></div>
+    </section>
+
+    <section class="stat-grid">
+      <article><span>XAUUSD</span><strong id="price">--</strong><small id="priceState">Waiting</small></article>
+      <article><span>RSI</span><strong id="rsi">--</strong><small>Momentum</small></article>
+      <article><span>FLOW</span><strong id="flow">--</strong><small id="flowSub">MT5 flow</small></article>
+      <article><span>DELTA</span><strong id="delta">--</strong><small id="deltaSub">Attack balance</small></article>
+    </section>
+
+    <section class="stat-grid">
+      <article><span>POWER</span><strong id="power">--</strong><small>Momentum power</small></article>
+      <article><span>BUY/SELL</span><strong id="buySell">--</strong><small>Ratio</small></article>
+      <article><span>CONF</span><strong id="conf">--</strong><small>Confidence</small></article>
+      <article><span>Last Update</span><strong id="lastUpdate">--</strong><small id="age">Realtime</small></article>
+    </section>
+
+
+    <section id="smc-system" class="terminal-layout panel terminal-panel">
+      <div class="chart-area">
+        <div class="panel-head terminal-head">
+          <div>
+            <h3>VYRO TradingView Terminal</h3>
+            <small>Realtime chart + SMC overlay từ MT5 EA Bridge</small>
+          </div>
+          <div class="tf-tabs"><button class="active">M1</button><button>M5</button><button>M15</button><button>H1</button></div>
+        </div>
+        <div id="tvChart" class="tv-chart"><canvas id="fallbackChart"></canvas></div>
+        <div class="chart-legend">
+          <span class="red-dot">Supply</span><span class="green-dot">Demand</span><span class="blue-dot">FVG</span><span class="yellow-dot">No Trade</span><span>Live price: <b id="chartPrice">--</b></span>
+        </div>
+      </div>
+      <aside class="smc-panel">
+        <div class="smc-title">SMC SYSTEM</div>
+        <div class="smc-top-grid">
+          <div><small>Structure</small><b id="smcStructure">--</b><span id="smcStructureNote">Market structure</span></div>
+          <div><small>BOS / CHOCH</small><b id="smcBosChoch">--</b><span id="smcBosChochNote">Waiting</span></div>
+          <div><small>Trend Strength</small><b id="smcStrength">--</b><span id="smcBars" class="strength-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="smc-wide red-soft"><small>Liquidity</small><b id="smcLiquidity">--</b><span id="smcLiquidityNote">SSL / BSL / Sweep</span></div>
+        <div class="smc-wide amber-soft"><small>Stop Hunt</small><b id="smcStopHunt">--</b><span id="smcStopHuntNote">Status</span></div>
+        <div class="smc-zones">
+          <div class="smc-zone-card supply"><small>SELL ZONE / SUPPLY</small><b id="smcSellZone">--</b><span>SMC Supply Zone</span></div>
+          <div class="smc-zone-card demand"><small>BUY ZONE / DEMAND</small><b id="smcBuyZone">--</b><span>SMC Demand Zone</span></div>
+        </div>
+        <div class="smc-table">
+          <div><span>TP1</span><b id="smcTp1">--</b><em id="smcRr1">R:R 1:1</em></div>
+          <div><span>TP2</span><b id="smcTp2">--</b><em id="smcRr2">R:R 1:2</em></div>
+          <div><span>TP3</span><b id="smcTp3">--</b><em id="smcRr3">R:R 1:3</em></div>
+        </div>
+        <div class="smc-mini-grid">
+          <div><small>FVG Zone</small><b id="smcFvg">--</b></div>
+          <div><small>OB Zone</small><b id="smcOb">--</b></div>
+          <div><small>Mitigation</small><b id="smcMitigation">--</b></div>
+          <div><small>Confluence</small><b id="smcConfluence">--</b></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="grid2">
+      <article class="panel">
+        <div class="panel-head"><h3>AI Signal Matrix</h3><span id="source">MT5</span></div>
+        <div class="matrix">
+          <div><small>Trend AI</small><b id="trend">Waiting</b></div>
+          <div><small>Liquidity</small><b id="liquidity">Waiting</b></div>
+          <div><small>Pressure</small><b id="pressure">Waiting</b></div>
+          <div><small>Risk Mode</small><b id="risk">Waiting</b></div>
+          <div><small>Session</small><b id="sessionName">London/NY</b></div>
+          <div><small>Action</small><b id="action">Wait signal</b></div>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><h3>Smart Flow Read</h3><span>FLOW + DELTA</span></div>
+        <div class="flow-box"><span>Dominance</span><b id="dominance">Mixed</b><small id="dominanceNote">Waiting smart flow</small></div>
+        <div class="zone red"><span>SELL ZONE / SUPPLY</span><b id="sellZone">--</b><small>SMC Supply từ bot</small></div>
+        <div class="zone yellow"><span>NO TRADE</span><b>4515 - 4525</b><small>Mid range chop</small></div>
+        <div class="zone green"><span>BUY ZONE / DEMAND</span><b id="buyZone">--</b><small>SMC Demand từ bot</small></div>
+      </article>
+    </section>
+
+    <section id="stream" class="panel">
+      <div class="panel-head"><h3>Realtime Stream Monitor</h3><span>MT5 · API</span></div>
+      <div class="stream-grid">
+        <div><small>Connection</small><strong id="connectionText">ONLINE</strong></div><div><small>Mode</small><strong id="mode">LIVE</strong></div>
+        <div><small>Last Tick</small><strong id="lastTick">--</strong></div><div><small>Heartbeat</small><strong id="heartbeat">--</strong></div>
+      </div>
+    </section>
+
+    <section id="history" class="panel">
+      <div class="panel-head"><h3>Signal History</h3><span>FLOW + DELTA</span></div>
+      <div id="historyTable" class="table"><div class="row head"><span>Time</span><span>Signal</span><span>Price</span><span>Flow</span><span>Delta</span></div></div>
+    </section>
+
+    <section id="affiliate" class="panel"><div class="panel-head"><h3>Partner Dashboard</h3><span>IB / Leader</span></div>
+      <div class="stream-grid"><div><small>Referrals</small><strong>48</strong></div><div><small>Commission</small><strong>12.400.000đ</strong></div><div><small>Conversion</small><strong>18.5%</strong></div><div><small>Rank</small><strong>PRO PARTNER</strong></div></div>
+    </section>
+
+    <section id="admin" class="panel hidden admin-panel">
+      <div class="panel-head">
+        <div><h3>VYRO Admin Control</h3><small>Quản trị khách hàng, duyệt tài khoản, khóa, gia hạn, sửa gói.</small></div>
+        <span>PRIVATE CONTROL</span>
+      </div>
+      <div class="admin-summary">
+        <div><small>Total Users</small><strong id="totalUsers">0</strong></div>
+        <div><small>Active</small><strong id="activeUsers">0</strong></div>
+        <div><small>Pending</small><strong id="pendingUsers">0</strong></div>
+        <div><small>Expired/Locked</small><strong id="expiredUsers">0</strong></div>
+      </div>
+      <div class="admin-grid">
+        <label>User<input id="newUser" placeholder="vip002"></label>
+        <label>Pass<input id="newPass" placeholder="123456"></label>
+        <label>Plan<select id="newPlan"><option value="basic">basic</option><option value="pro" selected>pro</option><option value="vip">vip</option></select></label>
+        <label>Số ngày<input id="newDays" type="number" value="30"></label>
+        <label>Status<select id="newStatus"><option value="active">active</option><option value="pending">pending</option><option value="expired">expired</option></select></label>
+        <label>Admin PIN<input id="pinInput" type="password" placeholder="Nhập PIN mới nếu muốn đổi"></label>
+      </div>
+      <div class="btns wrap-btns">
+        <button class="primary" onclick="saveUser()">Add / Update User</button>
+        <button class="ghost" onclick="savePin()">Save PIN</button>
+        <button class="ghost" onclick="exportUsers()">Export Users</button>
+        <button class="ghost" onclick="document.getElementById('importFile').click()">Import Users</button>
+        <input id="importFile" class="hidden" type="file" accept="application/json" onchange="importUsers(event)">
+        <button class="ghost danger" onclick="resetDemoData()">Reset Demo</button>
+        <button class="ghost" onclick="lockAdmin()">Lock Admin</button>
+      </div>
+      <div class="searchbar"><input id="userSearch" oninput="renderUserTable()" placeholder="Tìm user, plan, status..."></div>
+      <div id="userTable" class="table user-table"></div>
+    </section>
+  </main>
+
+  <div id="adminModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Mở khóa Admin</h3>
+      <p>Nhập PIN quản trị để mở Control Panel.</p>
+      <input id="pin" type="password" placeholder="Nhập PIN admin" onkeydown="if(event.key==='Enter')unlockAdmin()">
+      <div class="btns"><button class="primary" onclick="unlockAdmin()">Unlock</button><button class="ghost" onclick="closeAdmin()">Cancel</button></div>
+    </div>
+  </div>
+  <div id="toast" class="toast">Done</div>
+  <script src="script.js?v=14.2.0"></script>
+</body>
+</html>
