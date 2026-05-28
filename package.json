@@ -1,6 +1,6 @@
 {
   "name": "vyro-pro-max-real-backend",
-  "version": "13.7.3",
+  "version": "13.7.4",
   "private": true,
   "main": "server.js",
   "scripts": {

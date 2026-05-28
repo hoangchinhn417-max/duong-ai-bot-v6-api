@@ -1,120 +1,117 @@
 
 const API_URL = window.location.origin;
+const VYRO_VERSION = 'V13.7.4_REALTIME_UI_BIND';
 
 function norm(v, fallback='--') {
   return (v === undefined || v === null || v === '') ? fallback : v;
 }
-
+function pick(data, keys, fallback) {
+  for (const k of keys) {
+    const parts = k.split('.');
+    let cur = data;
+    for (const p of parts) cur = cur?.[p];
+    if (cur !== undefined && cur !== null && cur !== '') return cur;
+  }
+  return fallback;
+}
 function getSignal(data) {
-  return data.signal || data.status || data.raw?.signal || data.raw?.status || 'WAIT';
+  return pick(data, ['signal','status','raw.signal','raw.status'], 'WAIT');
 }
-
 function getConf(data) {
-  return data.conf ?? data.confidence ?? data.raw?.confidence ?? data.raw?.score ?? 55;
+  return pick(data, ['conf','confidence','score','raw.confidence','raw.score'], 55);
 }
-
 function setText(selector, value) {
-  document.querySelectorAll(selector).forEach(el => {
-    el.textContent = value;
+  document.querySelectorAll(selector).forEach(el => el.textContent = value);
+}
+function findCardByLabel(labelText) {
+  const label = labelText.toUpperCase();
+  const nodes = Array.from(document.querySelectorAll('div,section,article,li'));
+  return nodes
+    .filter(n => (n.innerText || '').toUpperCase().includes(label))
+    .sort((a,b) => (a.innerText || '').length - (b.innerText || '').length)[0];
+}
+function bindCard(label, value, subValue) {
+  setText(`[data-vyro="${label.toLowerCase()}"], .${label.toLowerCase()}-value, #${label.toLowerCase()}Value`, value);
+  const card = findCardByLabel(label);
+  if (!card) return;
+  card.setAttribute('data-bound', 'true');
+
+  let titleEl = Array.from(card.querySelectorAll('*')).find(el => (el.textContent || '').trim().toUpperCase() === label.toUpperCase());
+  let all = Array.from(card.querySelectorAll('h1,h2,h3,h4,p,span,div,strong,b'))
+    .filter(el => el !== titleEl && !el.querySelector('*') && (el.textContent || '').trim() !== '');
+
+  // Prefer old placeholder values
+  let target = all.find(el => ['--','WAIT','55%','Neutral','Mixed','Waiting','0/0'].includes((el.textContent || '').trim()));
+  if (!target) target = all[0];
+
+  if (target) target.textContent = value;
+  if (subValue) {
+    let sub = all.find(el => el !== target && !['RSI','FLOW','DELTA','POWER','BUY/SELL','CONF','XAUUSD'].includes((el.textContent || '').trim().toUpperCase()));
+    if (sub) sub.textContent = subValue;
+  }
+}
+function updateBigSignal(signal) {
+  setText('.main-signal,#mainSignal,#signal,[data-vyro="signal"]', signal);
+  const candidates = Array.from(document.querySelectorAll('h1,h2,h3,div,span,strong'))
+    .filter(el => !el.querySelector('*') && ['WAIT','BUY','SELL'].includes((el.textContent || '').trim().toUpperCase()))
+    .sort((a,b) => (parseFloat(getComputedStyle(b).fontSize) || 0) - (parseFloat(getComputedStyle(a).fontSize) || 0));
+  if (candidates[0]) candidates[0].textContent = signal;
+}
+function updateStatusText() {
+  document.querySelectorAll('div,p,span').forEach(el => {
+    const t = (el.textContent || '').trim();
+    if (t.includes('API chưa có dữ liệu mới')) el.textContent = 'API đã nhận dữ liệu realtime từ MT5.';
+    if (t.includes('Dashboard vẫn sẵn sàng nhận tín hiệu MT5')) el.textContent = 'Dashboard đang đồng bộ realtime từ MT5.';
   });
 }
-
-function setByCardTitle(title, value, subValue) {
-  const cards = document.querySelectorAll('div, section, article');
-  const titleUpper = title.toUpperCase();
-
-  for (const card of cards) {
-    const txt = (card.innerText || '').toUpperCase();
-    if (!txt.includes(titleUpper)) continue;
-
-    const children = Array.from(card.querySelectorAll('*'));
-    let label = children.find(x => (x.innerText || '').trim().toUpperCase() === titleUpper);
-    if (!label) continue;
-
-    let parent = label.closest('div') || card;
-    let targets = Array.from(parent.querySelectorAll('div, span, h1, h2, h3, p, strong, b'))
-      .filter(x => x !== label && (x.innerText || '').trim() !== '');
-
-    if (targets.length) {
-      targets[0].textContent = value;
-      if (subValue && targets[1]) targets[1].textContent = subValue;
-      return true;
-    }
-  }
-  return false;
-}
-
-function updateMainSignal(signal) {
-  setText('.main-signal, #mainSignal, #signal, [data-signal]', signal);
-
-  const bigTitles = Array.from(document.querySelectorAll('h1, h2, .signal, .status, .title, div, span'))
-    .filter(el => {
-      const t = (el.innerText || '').trim();
-      return ['WAIT','BUY','SELL'].includes(t);
-    });
-
-  if (bigTitles.length) bigTitles[0].textContent = signal;
-}
-
 async function loadSignal() {
   try {
-    const res = await fetch(API_URL + '/api/latest-signal?t=' + Date.now(), { cache: 'no-store' });
+    const res = await fetch(API_URL + '/api/latest-signal?t=' + Date.now(), {cache:'no-store'});
     const data = await res.json();
-    console.log('VYRO SIGNAL DATA:', data);
+    window.__VYRO_LAST_SIGNAL__ = data;
+    console.log('VYRO SIGNAL DATA', data);
 
     const signal = getSignal(data);
+    const rsi = pick(data, ['rsi','raw.rsi'], '--');
+    const flow = pick(data, ['flow','raw.flow'], '--');
+    const delta = pick(data, ['delta','raw.delta'], '--');
+    const power = pick(data, ['power','raw.power'], '--');
+    const buySell = pick(data, ['buySell','raw.buySell','raw.ratio'], '0/0');
     const conf = getConf(data);
-    const rsi = data.rsi ?? data.raw?.rsi;
-    const flow = data.flow ?? data.raw?.flow;
-    const delta = data.delta ?? data.raw?.delta;
-    const power = data.power ?? data.raw?.power;
-    const buySell = data.buySell ?? data.raw?.buySell ?? data.raw?.['buy/sell'] ?? data.raw?.ratio;
-    const pressure = data.raw?.pressure ?? data.pressure ?? signal;
-    const liquidity = data.raw?.liquidity ?? data.liquidity ?? 'Waiting';
+    const pressure = pick(data, ['pressure','raw.pressure'], signal);
+    const liquidity = pick(data, ['liquidity','raw.liquidity'], 'Waiting');
+    const trend = pick(data, ['trend','raw.trend'], signal === 'BUY' ? 'Bullish' : signal === 'SELL' ? 'Bearish' : 'Neutral');
+    const risk = pick(data, ['risk','raw.risk'], '--');
+    const action = pick(data, ['action','raw.action'], '--');
 
-    updateMainSignal(signal);
+    updateBigSignal(signal);
+    bindCard('XAUUSD', data.symbol || data.raw?.symbol || 'XAUUSD', signal);
+    bindCard('RSI', norm(rsi), 'Momentum');
+    bindCard('FLOW', norm(flow), pressure);
+    bindCard('DELTA', norm(delta), 'Attack');
+    bindCard('POWER', norm(power), 'Momentum power');
+    bindCard('BUY/SELL', norm(buySell, '0/0'), 'Ratio');
+    bindCard('CONF', conf + '%', 'Confidence');
+    bindCard('LIQUIDITY', liquidity);
+    bindCard('PRESSURE', pressure);
+    bindCard('TREND AI', trend);
+    bindCard('RISK MODE', risk);
+    bindCard('ACTION', action);
 
-    setText('.rsi-value, #rsiValue, [data-rsi]', norm(rsi));
-    setText('.flow-value, #flowValue, [data-flow]', norm(flow));
-    setText('.delta-value, #deltaValue, [data-delta]', norm(delta));
-    setText('.power-value, #powerValue, [data-power]', norm(power));
-    setText('.buysell-value, #buySellValue, [data-buysell]', norm(buySell, '0/0'));
-    setText('.conf-value, #confValue, [data-conf]', conf + '%');
-    setText('.ai-score, #aiScore, [data-score]', conf);
-    setText('.pressure-value, #pressureValue, [data-pressure]', pressure);
-    setText('.liquidity-value, #liquidityValue, [data-liquidity]', liquidity);
-    setText('.update-value, #updateValue, [data-update]', new Date().toLocaleTimeString());
+    setText('.ai-score,#aiScore,[data-vyro="score"]', conf);
+    setText('.conf-value,#confValue,[data-vyro="conf"]', conf + '%');
+    setText('.update-value,#updateValue,[data-vyro="update"]', new Date().toLocaleTimeString());
 
-    // Fallback theo tiêu đề card nếu HTML không có class/id chuẩn
-    setByCardTitle('RSI', norm(rsi), 'Momentum');
-    setByCardTitle('FLOW', norm(flow), pressure);
-    setByCardTitle('DELTA', norm(delta), 'Attack');
-    setByCardTitle('POWER', norm(power), 'Momentum power');
-    setByCardTitle('BUY/SELL', norm(buySell, '0/0'), 'Ratio');
-    setByCardTitle('CONF', conf + '%', 'Confidence');
-    setByCardTitle('LIQUIDITY', liquidity);
-    setByCardTitle('PRESSURE', pressure);
-
-    const statusText = document.querySelectorAll('div, span, p');
-    statusText.forEach(el => {
-      const t = (el.innerText || '').trim();
-      if (t.includes('API chưa có dữ liệu mới')) {
-        el.textContent = 'API đã nhận dữ liệu realtime từ MT5.';
-      }
-    });
-
-  } catch (err) {
-    console.error('VYRO load signal error:', err);
+    updateStatusText();
+  } catch (e) {
+    console.error('VYRO loadSignal error', e);
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   loadSignal();
   setInterval(loadSignal, 3000);
-
-  document.querySelectorAll('button').forEach(btn => {
-    if ((btn.innerText || '').toLowerCase().includes('pull')) {
-      btn.addEventListener('click', loadSignal);
-    }
+  document.querySelectorAll('button,a').forEach(btn => {
+    if ((btn.textContent || '').toLowerCase().includes('pull')) btn.addEventListener('click', loadSignal);
   });
 });
