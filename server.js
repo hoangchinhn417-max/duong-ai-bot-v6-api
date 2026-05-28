@@ -192,8 +192,8 @@ function saveSignal(signal){
 
 ensureDb();
 
-app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V15.6 FINAL PRODUCTION REALTIME TRADING ENGINE',time:new Date().toISOString()}));
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V15.6 FINAL PRODUCTION REALTIME TRADING ENGINE',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
+app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V15.8 SMOOTH CHART ENGINE ANTI FLICKER',time:new Date().toISOString()}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V15.8 SMOOTH CHART ENGINE ANTI FLICKER',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
 app.get('/api/test-login',(req,res)=>res.json({ok:true,admin:'admin / 2606',vip:'vip001 / 123456'}));
 
 app.post('/api/login',(req,res)=>{
@@ -227,7 +227,7 @@ app.get('/api/candles',(req,res)=>{
 
 app.get('/api/debug/latest',(req,res)=>{
   res.set('Cache-Control','no-store');
-  res.json({ok:true, latest:latestSignalMemory, candles:candleHistory.slice(-20), streamClients:streamClients.length, version:'V15.6'});
+  res.json({ok:true, latest:latestSignalMemory, candles:candleHistory.slice(-20), streamClients:streamClients.length, version:'V15.8'});
 });
 
 app.get('/api/stream',(req,res)=>{
@@ -252,8 +252,127 @@ setInterval(()=>{
   legacyClients=legacyClients.filter(res=>{try{res.write(`data: ${JSON.stringify({type:'ping',time:new Date().toISOString()})}\n\n`);return true;}catch(e){return false;}});
 },15000);
 
+
+
+// ===== V15.8 SMOOTH ENGINE: raw MT5 object -> normalized JSON =====
+function isBadValue(v){
+  if(v===undefined || v===null) return true;
+  if(Array.isArray(v)) return v.length===0 || v.every(isBadValue);
+  if(typeof v==='object') return false;
+  const t=String(v).trim().toLowerCase();
+  return !t || ['0','0.0','0.00','0/0','false','null','undefined','nan','n/a','--','waiting_for_mt5'].includes(t);
+}
+function cleanText(v, fb='WAITING'){
+  if(v===undefined || v===null) return fb;
+  if(Array.isArray(v)){
+    const found=v.find(x=>!isBadValue(x));
+    return found===undefined ? fb : cleanText(found, fb);
+  }
+  if(typeof v==='object') return cleanText(v.text || v.value || v.price || v.name || v.label || '', fb);
+  const t=String(v).trim();
+  return isBadValue(t) ? fb : t;
+}
+function numberFromAny(v){
+  if(v===undefined || v===null) return null;
+  if(typeof v==='object') v=v.price || v.value || v.text || v.name || '';
+  const m=String(v).match(/-?[0-9]{3,6}(?:\.[0-9]+)?/);
+  const n=m ? Number(m[0]) : Number(v);
+  return Number.isFinite(n) && Math.abs(n)>0 ? n : null;
+}
+function parseObjectList(raw){
+  const out=[];
+  const push=(o={})=>{
+    const name=cleanText(o.name||o.object||o.id,'');
+    const text=cleanText(o.text||o.label||o.value,'');
+    const price=numberFromAny(o.price||o.p||o.y||o.level||text||name);
+    const blob=(name+' '+text).trim();
+    if(blob || price) out.push({name,text,price,raw:blob});
+  };
+  if(Array.isArray(raw.objects)) raw.objects.forEach(push);
+  if(Array.isArray(raw.chartObjects)) raw.chartObjects.forEach(push);
+  if(Array.isArray(raw.smcObjects)) raw.smcObjects.forEach(push);
+  const strings=[];
+  ['debug_all_objects','debug_sell_object','debug_buy_object','debug_tp_object','debug_entry_object','debug_sl_object','bosText','chochText','liquidityText','stopHuntText','fvgText'].forEach(k=>{
+    if(!isBadValue(raw[k])) strings.push(String(raw[k]));
+  });
+  for(const joined of strings){
+    joined.split(/\s*\|\|\s*/).forEach(part=>{
+      if(!part.trim()) return;
+      const at=part.match(/@\s*([0-9]{3,6}(?:\.[0-9]+)?)/);
+      const eq=part.match(/(?:=|:)\s*([^@|]+?)\s*(?:@|$)/);
+      const before=part.split('@')[0].trim();
+      const pieces=before.split('|').map(x=>x.trim()).filter(Boolean);
+      push({name:pieces[0]||before,text:pieces.slice(1).join(' ') || (eq?eq[1]:''),price:at?at[1]:undefined});
+    });
+  }
+  return out;
+}
+function classifySMCObject(o){
+  const b=(String(o.name||'')+' '+String(o.text||'')+' '+String(o.raw||'')).toUpperCase().replace(/_/g,' ');
+  if(/TP\s*1|TAKE PROFIT\s*1/.test(b)) return 'TP1';
+  if(/TP\s*2|TAKE PROFIT\s*2/.test(b)) return 'TP2';
+  if(/TP\s*3|TAKE PROFIT\s*3/.test(b)) return 'TP3';
+  if(/NO\s*TRADE|MID\s*RANGE|CHOP/.test(b)) return 'NO_TRADE';
+  if(/STOP\s*HUNT|STOPHUNT/.test(b)) return 'STOP_HUNT';
+  if(/CHOCH|CHANGE\s+OF\s+CHARACTER/.test(b)) return 'CHOCH';
+  if(/\bBOS\b|BREAK\s+OF\s+STRUCTURE/.test(b)) return 'BOS';
+  if(/FVG|FAIR\s+VALUE\s+GAP|IMBALANCE/.test(b)) return 'FVG';
+  if(/\bSSL\b|SELL\s+SIDE\s+LIQUIDITY/.test(b)) return 'SSL';
+  if(/\bBSL\b|BUY\s+SIDE\s+LIQUIDITY/.test(b)) return 'BSL';
+  if(/SUPPLY|SELL\s*ZONE|SELL\s*AREA|BEARISH\s*OB|ORDER\s*BLOCK\s*SELL|SELL\s*OB/.test(b) && !/TP|TAKE\s*PROFIT|STOP\s*LOSS|\bSL\b|ENTRY|NO\s*TRADE/.test(b)) return 'SUPPLY';
+  if(/DEMAND|BUY\s*ZONE|BUY\s*AREA|BULLISH\s*OB|ORDER\s*BLOCK\s*BUY|BUY\s*OB/.test(b) && !/TP|TAKE\s*PROFIT|STOP\s*LOSS|\bSL\b|ENTRY|NO\s*TRADE/.test(b)) return 'DEMAND';
+  if(/ORDER\s*BLOCK|\bOB\b/.test(b)) return 'OB';
+  return '';
+}
+function normalizeSMCFinal(signal, raw){
+  const objects=parseObjectList(raw||{}).map(o=>({...o,category:classifySMCObject(o)}));
+  const price=numberFromAny(signal.price||signal.bid||raw.bid||raw.price) || 0;
+  const nearest=(cat)=>{
+    const arr=objects.filter(o=>o.category===cat && numberFromAny(o.price));
+    if(!arr.length) return null;
+    arr.sort((a,b)=>Math.abs(numberFromAny(a.price)-price)-Math.abs(numberFromAny(b.price)-price));
+    return arr[0];
+  };
+  const bycat=(cat)=>objects.find(o=>o.category===cat);
+  const supply=nearest('SUPPLY'), demand=nearest('DEMAND');
+  const tp1=bycat('TP1'), tp2=bycat('TP2'), tp3=bycat('TP3');
+  const ssl=bycat('SSL'), bsl=bycat('BSL');
+  const bos=bycat('BOS'), choch=bycat('CHOCH');
+  const fvg=bycat('FVG'), ob=bycat('OB'), stop=bycat('STOP_HUNT');
+
+  const sellZone=numberFromAny(raw.sellZone||raw.supply||raw.supplyZone||raw.smc_supply) || numberFromAny(supply?.price);
+  const buyZone=numberFromAny(raw.buyZone||raw.demand||raw.demandZone||raw.smc_demand) || numberFromAny(demand?.price);
+  const liquidity = cleanText(raw.liquidity || raw.liquidityText || raw.liq, '') || (ssl?'SSL BELOW / SELL SIDE LIQUIDITY':(bsl?'BSL ABOVE / BUY SIDE LIQUIDITY':'WAITING'));
+  const stopHunt = cleanText(raw.stopHuntText || raw.stop_hunt_text, '') || ((raw.stopHunt===true || stop)?'ARMED':'WAITING');
+  const bosChoch = cleanText(raw.bosChoch || raw.bos_choch || raw.structureSignal, '') || (choch?'CHOCH':(bos?'BOS':'WAITING'));
+  const fvgText = cleanText(raw.fvgText || raw.fvgZone || raw.fvg_zone, '') || (fvg ? (fvg.text||fvg.name||'FVG DETECTED') : 'WAITING');
+  const obText = cleanText(raw.ob || raw.obZone || raw.orderBlock, '') || (ob ? (ob.text||ob.name||'OB ZONE') : 'WAITING');
+  const tp1v = numberFromAny(raw.tp1 || raw.TP1) || numberFromAny(tp1?.price);
+  const tp2v = numberFromAny(raw.tp2 || raw.TP2) || numberFromAny(tp2?.price);
+  const tp3v = numberFromAny(raw.tp3 || raw.TP3) || numberFromAny(tp3?.price);
+
+  signal.objects=objects.slice(0,120);
+  signal.smc={
+    structure: cleanText(signal.trend||raw.trend,'WAITING'),
+    bosChoch, liquidity, stopHunt, fvg:fvgText, ob:obText,
+    sellZone: sellZone || 'WAITING', buyZone: buyZone || 'WAITING',
+    tp1: tp1v || 'WAITING', tp2: tp2v || 'WAITING', tp3: tp3v || 'WAITING',
+    supplyObject: supply || null, demandObject: demand || null,
+    liquidityObject: ssl || bsl || null, bosObject: bos || null, chochObject: choch || null, fvgObject: fvg || null
+  };
+  if(sellZone){ signal.sellZone=sellZone; signal.supply=sellZone; signal.supplyZone=sellZone; }
+  if(buyZone){ signal.buyZone=buyZone; signal.demand=buyZone; signal.demandZone=buyZone; }
+  if(tp1v) signal.tp1=tp1v; if(tp2v) signal.tp2=tp2v; if(tp3v) signal.tp3=tp3v;
+  signal.liquidity=liquidity; signal.stopHunt=stopHunt; signal.bosChoch=bosChoch; signal.fvg=fvgText; signal.ob=obText;
+  signal.smcObjectCount=objects.length;
+  signal.smcRealtime = objects.length>0 || !!sellZone || !!buyZone || liquidity!=='WAITING' || bosChoch!=='WAITING';
+  return signal;
+}
+
 function receiveSignal(req,res){
-  const d=normalizeSignal(req.body||{});
+  const raw=req.body||{};
+  let d=normalizeSignal(raw);
+  d=normalizeSMCFinal(d, raw);
   saveSignal(d);
   res.set('Cache-Control','no-store');
   res.json({ok:true,received:d,realtime:true,demo:false,realtimeClients:streamClients.length+legacyClients.length});
@@ -278,4 +397,4 @@ app.use((req,res,next)=>{res.set('Cache-Control','no-store, no-cache, must-reval
 app.use(express.static(__dirname,{etag:false,maxAge:0,setHeaders:(res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');}}));
 app.use((req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
-app.listen(PORT,()=>console.log('VYRO PRO MAX TERMINAL V15.6 FINAL PRODUCTION REALTIME TRADING ENGINE running on '+PORT));
+app.listen(PORT,()=>console.log('VYRO PRO MAX TERMINAL V15.8 SMOOTH CHART ENGINE ANTI FLICKER running on '+PORT));
