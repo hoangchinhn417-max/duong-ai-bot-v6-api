@@ -1,6 +1,0 @@
-[
-  {"username":"admin","password":"2606","name":"Master Admin","plan":"vip","status":"active","expire":"2099-12-31","admin":true,"email":"","createdAt":"2026-05-28T00:00:00.000Z"},
-  {"username":"vip001","password":"123456","name":"VIP Client 001","plan":"pro","status":"active","expire":"2027-05-28","admin":false,"email":"","createdAt":"2026-05-28T00:00:00.000Z"},
-  {"username":"vip002","password":"123456","name":"VIP Client 002","plan":"pro","status":"active","expire":"2026-06-27","admin":false,"email":"","createdAt":"2026-05-28T00:00:00.000Z"},
-  {"username":"vip003","password":"123456","name":"VIP Client 003","plan":"pro","status":"active","expire":"2027-05-28","admin":false,"email":"","createdAt":"2026-05-28T00:00:00.000Z"}
-]
