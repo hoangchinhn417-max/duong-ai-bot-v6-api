@@ -1,6 +1,6 @@
 {
-  "name": "vyro-pro-max-clean",
-  "version": "13.8.2",
+  "name": "vyro-pro-max-v14-old-ui-core-smc-zone",
+  "version": "14.0.0",
   "private": true,
   "main": "server.js",
   "scripts": {
