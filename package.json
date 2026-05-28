@@ -1,15 +1,8 @@
 {
-  "name": "duong-ai-v12-auth-backend-pro",
-  "version": "12.0.0",
+  "name": "vyro-pro-max-real-backend",
+  "version": "13.7.2",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2"
-  },
-  "engines": {
-    "node": ">=18"
-  }
+  "scripts": {"start":"node server.js"},
+  "dependencies": {"cors":"latest", "express":"latest"},
+  "engines": {"node": ">=18"}
 }
