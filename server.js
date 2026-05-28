@@ -76,6 +76,18 @@ function normalizeSignal(b){
     buyZone:b.buyZone || b.buy_zone || b.demand || b.demandZone || b.smcBuyZone || null,
     source:b.source || '',
     reason:b.reason || '',
+    bos:b.bos || b.BOS || '',
+    choch:b.choch || b.CHOCH || '',
+    bosChoch:b.bosChoch || b.bos_choch || b.BOS_CHOCH || b.bos || b.choch || '',
+    stopHunt:b.stopHunt || b.stophunt || b.stop_hunt || b.STOPHUNT || '',
+    fvg:b.fvg || b.fvgZone || b.fvg_zone || '',
+    ob:b.ob || b.obZone || b.orderBlock || b.order_block || '',
+    tp1:b.tp1 || b.TP1 || null,
+    tp2:b.tp2 || b.TP2 || null,
+    tp3:b.tp3 || b.TP3 || null,
+    mitigation:b.mitigation || '',
+    confluence:b.confluence || '',
+    trendStrength:b.trendStrength || b.trend_strength || '',
     heartbeat:Date.now(),
     raw:b,
     updatedAt:new Date().toISOString()
@@ -100,8 +112,8 @@ function saveSignal(signal){
 
 ensureDb();
 
-app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO V13.6.2 UI + V14.2 realtime',time:new Date().toISOString()}));
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO V13.6.2 UI + V14.2 realtime',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
+app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V15',time:new Date().toISOString()}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V15',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
 app.get('/api/test-login',(req,res)=>res.json({ok:true,admin:'admin / 2606',vip:'vip001 / 123456'}));
 
 app.post('/api/login',(req,res)=>{
@@ -165,4 +177,4 @@ app.post('/api/test-signal',(req,res)=>{
 app.use(express.static(__dirname,{etag:false,maxAge:0}));
 app.use((req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
-app.listen(PORT,()=>console.log('VYRO V13.6.2 UI STABLE + V14.2 REALTIME running on '+PORT));
+app.listen(PORT,()=>console.log('VYRO PRO MAX TERMINAL V15 running on '+PORT));

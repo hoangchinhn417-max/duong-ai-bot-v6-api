@@ -6,7 +6,8 @@
   <title>VYRO PRO - AI Trading System</title>
   <meta name="description" content="VYRO PRO - AI Trading System, Smart Flow, Signal Dashboard, Admin User Management." />
   <link rel="icon" href="./assets/vyro-logo.jpeg?v=1361" />
-  <link rel="stylesheet" href="style.css?v=14.2.0" />
+  <link rel="stylesheet" href="style.css?v=15.0.0" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
   <div class="glow a"></div><div class="glow b"></div><div class="grid-bg"></div>
@@ -51,6 +52,7 @@
       <a href="#terminal" class="active">⌂ Tổng quan</a>
       <a href="#stream">◉ Smart Flow</a>
       <a href="#history">▤ Signal History</a>
+      <a href="#smc-system">◆ SMC System</a>
       <a href="#affiliate">◇ Affiliate</a>
       <a href="#admin" id="adminLink" class="hidden">⚙ Admin quản trị</a>
     </nav>
@@ -93,6 +95,48 @@
       <article><span>BUY/SELL</span><strong id="buySell">--</strong><small>Ratio</small></article>
       <article><span>CONF</span><strong id="conf">--</strong><small>Confidence</small></article>
       <article><span>Last Update</span><strong id="lastUpdate">--</strong><small id="age">Realtime</small></article>
+    </section>
+
+
+    <section id="smc-system" class="terminal-layout panel terminal-panel">
+      <div class="chart-area">
+        <div class="panel-head terminal-head">
+          <div>
+            <h3>VYRO TradingView Terminal</h3>
+            <small>Realtime chart + SMC overlay từ MT5 EA Bridge</small>
+          </div>
+          <div class="tf-tabs"><button class="active">M1</button><button>M5</button><button>M15</button><button>H1</button></div>
+        </div>
+        <div id="tvChart" class="tv-chart"><canvas id="fallbackChart"></canvas></div>
+        <div class="chart-legend">
+          <span class="red-dot">Supply</span><span class="green-dot">Demand</span><span class="blue-dot">FVG</span><span class="yellow-dot">No Trade</span><span>Live price: <b id="chartPrice">--</b></span>
+        </div>
+      </div>
+      <aside class="smc-panel">
+        <div class="smc-title">SMC SYSTEM</div>
+        <div class="smc-top-grid">
+          <div><small>Structure</small><b id="smcStructure">--</b><span id="smcStructureNote">Market structure</span></div>
+          <div><small>BOS / CHOCH</small><b id="smcBosChoch">--</b><span id="smcBosChochNote">Waiting</span></div>
+          <div><small>Trend Strength</small><b id="smcStrength">--</b><span id="smcBars" class="strength-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="smc-wide red-soft"><small>Liquidity</small><b id="smcLiquidity">--</b><span id="smcLiquidityNote">SSL / BSL / Sweep</span></div>
+        <div class="smc-wide amber-soft"><small>Stop Hunt</small><b id="smcStopHunt">--</b><span id="smcStopHuntNote">Status</span></div>
+        <div class="smc-zones">
+          <div class="smc-zone-card supply"><small>SELL ZONE / SUPPLY</small><b id="smcSellZone">--</b><span>SMC Supply Zone</span></div>
+          <div class="smc-zone-card demand"><small>BUY ZONE / DEMAND</small><b id="smcBuyZone">--</b><span>SMC Demand Zone</span></div>
+        </div>
+        <div class="smc-table">
+          <div><span>TP1</span><b id="smcTp1">--</b><em id="smcRr1">R:R 1:1</em></div>
+          <div><span>TP2</span><b id="smcTp2">--</b><em id="smcRr2">R:R 1:2</em></div>
+          <div><span>TP3</span><b id="smcTp3">--</b><em id="smcRr3">R:R 1:3</em></div>
+        </div>
+        <div class="smc-mini-grid">
+          <div><small>FVG Zone</small><b id="smcFvg">--</b></div>
+          <div><small>OB Zone</small><b id="smcOb">--</b></div>
+          <div><small>Mitigation</small><b id="smcMitigation">--</b></div>
+          <div><small>Confluence</small><b id="smcConfluence">--</b></div>
+        </div>
+      </aside>
     </section>
 
     <section class="grid2">
