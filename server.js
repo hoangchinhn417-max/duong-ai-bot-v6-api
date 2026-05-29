@@ -192,8 +192,8 @@ function saveSignal(signal){
 
 ensureDb();
 
-app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V15.8 SMOOTH CHART ENGINE ANTI FLICKER',time:new Date().toISOString()}));
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V15.8 SMOOTH CHART ENGINE ANTI FLICKER',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
+app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V16.3 SMART VIEWPORT + LAYER RENDERER',time:new Date().toISOString()}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V16.3 SMART VIEWPORT + LAYER RENDERER',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
 app.get('/api/test-login',(req,res)=>res.json({ok:true,admin:'admin / 2606',vip:'vip001 / 123456'}));
 
 app.post('/api/login',(req,res)=>{
@@ -225,9 +225,14 @@ app.get('/api/candles',(req,res)=>{
   res.json({ok:true, timeframe:'M1', candles:candleHistory.slice(-300), latest:latestSignalMemory});
 });
 
+app.get('/api/normalized',(req,res)=>{
+  res.set('Cache-Control','no-store');
+  res.json(buildNormalizedStreamPacket(latestSignalMemory));
+});
+
 app.get('/api/debug/latest',(req,res)=>{
   res.set('Cache-Control','no-store');
-  res.json({ok:true, latest:latestSignalMemory, candles:candleHistory.slice(-20), streamClients:streamClients.length, version:'V15.8'});
+  res.json({ok:true, latest:latestSignalMemory, candles:candleHistory.slice(-20), streamClients:streamClients.length, version:'V16.3'});
 });
 
 app.get('/api/stream',(req,res)=>{
@@ -369,13 +374,102 @@ function normalizeSMCFinal(signal, raw){
   return signal;
 }
 
+
+// ===== V16.2 AI TP/SL + NORMALIZED SMC JSON ENGINE =====
+function finiteNum(v){
+  if(v===undefined || v===null) return null;
+  if(typeof v==='object') v=v.price || v.value || v.text || v.name || '';
+  const m=String(v).match(/-?[0-9]{3,6}(?:\.[0-9]+)?/);
+  const n=m ? Number(m[0]) : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function roundPrice(n){ return Number.isFinite(n) ? Number(n.toFixed(2)) : null; }
+function directionOf(signal){
+  const raw=String(signal.signal||signal.status||signal.action||signal.trend||'').toUpperCase();
+  if(raw.includes('SELL') || raw.includes('BEAR')) return 'SELL';
+  if(raw.includes('BUY') || raw.includes('BULL')) return 'BUY';
+  return 'WAIT';
+}
+function sessionMultiplier(session){
+  const s=String(session||'').toUpperCase();
+  if(s.includes('NY') || s.includes('NEW YORK')) return 1.35;
+  if(s.includes('LONDON')) return 1.15;
+  if(s.includes('ASIA')) return 0.75;
+  return 1.0;
+}
+function volatilityMultiplier(raw){
+  const atr=finiteNum(raw.atr || raw.ATR || raw.volatilityAtr) || 0;
+  const vol=String(raw.volatility||raw.riskMode||raw.risk||'').toUpperCase();
+  if(vol.includes('HIGH') || atr>=3.0) return 1.35;
+  if(vol.includes('LOW') || (atr>0 && atr<1.0)) return 0.75;
+  return 1.0;
+}
+function calculateAITargets(signal, raw){
+  const price=finiteNum(signal.price||signal.bid||raw.price||raw.bid);
+  if(!price) return signal;
+  const dir=directionOf(signal);
+  const atr=finiteNum(raw.atr || raw.ATR || signal.atr) || Math.max(1.2, price*0.00035);
+  const smc=signal.smc || {};
+  const sellZone=finiteNum(signal.sellZone||smc.sellZone);
+  const buyZone=finiteNum(signal.buyZone||smc.buyZone);
+  const liveTp1=finiteNum(signal.tp1||smc.tp1), liveTp2=finiteNum(signal.tp2||smc.tp2), liveTp3=finiteNum(signal.tp3||smc.tp3);
+  const mult=sessionMultiplier(signal.session||raw.session) * volatilityMultiplier(raw);
+  let tp1=null,tp2=null,tp3=null,sl=null,method='WAITING';
+  if(dir==='SELL'){
+    tp1 = liveTp1 || (buyZone && buyZone<price ? buyZone : price - atr*1.0*mult);
+    tp2 = liveTp2 || (price - atr*1.8*mult);
+    tp3 = liveTp3 || (price - atr*2.7*mult);
+    sl = sellZone && sellZone>price ? sellZone + atr*0.25 : price + atr*1.15;
+    method='SELL: TP1 liquidity/demand, TP2 ATR extension, TP3 external liquidity, SL above supply/swing';
+  } else if(dir==='BUY'){
+    tp1 = liveTp1 || (sellZone && sellZone>price ? sellZone : price + atr*1.0*mult);
+    tp2 = liveTp2 || (price + atr*1.8*mult);
+    tp3 = liveTp3 || (price + atr*2.7*mult);
+    sl = buyZone && buyZone<price ? buyZone - atr*0.25 : price - atr*1.15;
+    method='BUY: TP1 liquidity/supply, TP2 ATR extension, TP3 external liquidity, SL below demand/swing';
+  }
+  if(dir==='WAIT'){
+    signal.aiTargets={direction:'WAIT',method:'WAIT CONFIRM',tp1:'WAITING',tp2:'WAITING',tp3:'WAITING',sl:'WAITING',rr:'WAITING',atr:roundPrice(atr)};
+    return signal;
+  }
+  const risk=Math.abs(price-sl);
+  const reward=Math.abs(tp2-price);
+  const rr = risk>0 ? Number((reward/risk).toFixed(2)) : null;
+  signal.aiTargets={direction:dir,method,entry:roundPrice(price),tp1:roundPrice(tp1),tp2:roundPrice(tp2),tp3:roundPrice(tp3),sl:roundPrice(sl),rr:rr?`1:${rr}`:'WAITING',atr:roundPrice(atr),sessionMultiplier:roundPrice(mult)};
+  // Only fill public TP/SL fields if MT5 object did not already provide them.
+  if(!liveTp1) signal.tp1=roundPrice(tp1);
+  if(!liveTp2) signal.tp2=roundPrice(tp2);
+  if(!liveTp3) signal.tp3=roundPrice(tp3);
+  if(!finiteNum(signal.sl||signal.stopLoss)) signal.sl=roundPrice(sl);
+  if(!signal.smc) signal.smc={};
+  signal.smc.aiTpMethod=method; signal.smc.sl=signal.sl; signal.smc.rr=signal.aiTargets.rr;
+  return signal;
+}
+function buildNormalizedStreamPacket(signal){
+  const s=signal||{};
+  return {
+    ok:true,
+    version:'V16.3',
+    timestamp:new Date().toISOString(),
+    symbol:s.displaySymbol||s.symbol||'XAUUSD',
+    price:s.price||s.bid||null,
+    signal:s.signal||s.status||'WAIT',
+    structure:s.trend||s.smc?.structure||'WAITING',
+    smc:s.smc||{},
+    aiTargets:s.aiTargets||{},
+    flow:s.flow, delta:s.delta, rsi:s.rsi, score:s.score||s.confidence,
+    candles:candleHistory.slice(-120)
+  };
+}
+
 function receiveSignal(req,res){
   const raw=req.body||{};
   let d=normalizeSignal(raw);
   d=normalizeSMCFinal(d, raw);
+  d=calculateAITargets(d, raw);
   saveSignal(d);
   res.set('Cache-Control','no-store');
-  res.json({ok:true,received:d,realtime:true,demo:false,realtimeClients:streamClients.length+legacyClients.length});
+  res.json({ok:true,received:d,normalized:buildNormalizedStreamPacket(d),realtime:true,demo:false,realtimeClients:streamClients.length+legacyClients.length});
 }
 app.post('/api/signal', receiveSignal);
 app.post('/api/mt5/signal', receiveSignal);
@@ -397,4 +491,4 @@ app.use((req,res,next)=>{res.set('Cache-Control','no-store, no-cache, must-reval
 app.use(express.static(__dirname,{etag:false,maxAge:0,setHeaders:(res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');}}));
 app.use((req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
-app.listen(PORT,()=>console.log('VYRO PRO MAX TERMINAL V15.8 SMOOTH CHART ENGINE ANTI FLICKER running on '+PORT));
+app.listen(PORT,()=>console.log('VYRO PRO MAX TERMINAL V16.3 SMART VIEWPORT + LAYER RENDERER running on '+PORT));

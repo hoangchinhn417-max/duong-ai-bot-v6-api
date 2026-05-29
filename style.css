@@ -39,3 +39,7 @@ body.v158-smooth #fallbackChart{display:none!important;opacity:0!important;}
 body.v158-smooth #smartChartRoot{background:radial-gradient(circle at 50% 0,rgba(0,217,255,.10),transparent 34%),linear-gradient(180deg,#061b40,#020711)!important;}
 #vyroSmoothCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:50;transform:translateZ(0);will-change:contents;}
 body.v158-smooth .smart-chart-root svg{display:none!important;}
+
+/* V16.3 Smart Viewport persistent canvas */
+#vyroV163Canvas{z-index:20;pointer-events:none;border-radius:18px;}
+.chart-card,.chart-wrap,.terminal-chart,#chartWrap,#chartPanel,#smartChartRoot{min-height:420px;}

@@ -1,6 +1,6 @@
 {
-  "name": "vyro-pro-max-terminal-v15-8-smooth-engine",
-  "version": "15.8.0",
+  "name": "vyro-pro-max-terminal-v16-2-json-smc-ai-tp-engine",
+  "version": "16.2.0",
   "private": true,
   "main": "server.js",
   "scripts": {
@@ -13,5 +13,5 @@
   "engines": {
     "node": "20.x"
   },
-  "description": "VYRO PRO MAX TERMINAL V15.8 smooth anti-flicker realtime SMC engine"
+  "description": "VYRO PRO MAX TERMINAL V16.2 JSON SMC stream plus AI TP engine"
 }

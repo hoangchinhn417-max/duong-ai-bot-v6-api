@@ -1,4 +1,4 @@
-const APP_VERSION='VYRO_PRO_MAX_TERMINAL_V15_3_FINAL_FULL_REALTIME';
+const APP_VERSION='VYRO_PRO_MAX_TERMINAL_V16_2_JSON_SMC_AI_TP_ENGINE';
 const USER_KEY='vyro_pro_users';
 const PIN_KEY='vyro_pro_pin';
 const SESSION_KEY='vyro_pro_session';
@@ -695,7 +695,7 @@ window.addEventListener('load',()=>setTimeout(initTerminalChart,500));
 
 // ===== V15.7 FINAL SMC INTELLIGENCE LAYER =====
 (function(){
-  const VERSION='V15.7_SMC_INTELLIGENCE_LIVE_OBJECT_ENGINE';
+  const VERSION='V16.2_JSON_SMC_AI_TP_ENGINE';
   window.VYRO_VERSION=VERSION;
   const $v=(id)=>document.getElementById(id);
   const state={last:null,candles:[],raf:0,lastDrawKey:'',lastDomKey:'',stream:null,poll:0};
@@ -1084,4 +1084,171 @@ window.addEventListener('load',()=>setTimeout(initTerminalChart,500));
   document.addEventListener('DOMContentLoaded',()=>setTimeout(start,650));
   window.addEventListener('load',()=>setTimeout(start,650));
   window.addEventListener('resize',()=>setTimeout(schedule,120));
+})();
+
+// ===== V16.3 SMART VIEWPORT ENGINE + LAYERED SMC RENDERER =====
+// Mục tiêu: sửa lỗi chart bị ép sát mép, spike phá scale, label TP/Supply/Demand đè nhau.
+// Engine này chạy cuối cùng và override các engine cũ bằng 1 canvas ổn định.
+(function(){
+  'use strict';
+  const VERSION='V16.3_SMART_VIEWPORT_LAYER_RENDERER';
+  const $=id=>document.getElementById(id);
+  const q=s=>document.querySelector(s);
+  const num=v=>{ if(v===undefined||v===null) return NaN; const m=String(v).replace(/,/g,'').match(/-?\d+(\.\d+)?/); return m?Number(m[0]):NaN; };
+  const fmt=v=>Number.isFinite(v)?Number(v).toFixed(2):'WAITING';
+  const show=v=>{ if(v===false||v===0||v==='0'||v===null||v===undefined||v==='N/A'||v==='') return 'WAITING'; return String(v).toUpperCase(); };
+  const put=(id,val)=>{const el=$(id); if(el) el.textContent=val;};
+
+  const S={
+    latest:{}, candles:[], canvas:null, ctx:null, raf:0, lastDraw:0, tf:'M1',
+    maxCandles:160, stream:null, poll:0
+  };
+
+  function findWrap(){ return $('chartWrap')||$('chartPanel')||$('smartChartRoot')||q('.chart-wrap')||q('.chart-card')||q('.terminal-chart')||q('main'); }
+  function ensureCanvas(){
+    const wrap=findWrap(); if(!wrap) return null;
+    wrap.style.position='relative'; wrap.style.overflow='hidden';
+    // disable/remove legacy chart roots that redraw SVG/canvas over each other
+    ['smartChartRoot','fallbackChart','vyroSmcCanvas','vyroSmoothCanvas'].forEach(id=>{ const el=$(id); if(el && id!=='vyroV163Canvas') el.style.display='none'; });
+    let canvas=$('vyroV163Canvas');
+    if(!canvas){ canvas=document.createElement('canvas'); canvas.id='vyroV163Canvas'; canvas.className='vyro-v163-canvas'; wrap.appendChild(canvas); }
+    canvas.style.position='absolute'; canvas.style.inset='0'; canvas.style.width='100%'; canvas.style.height='100%'; canvas.style.display='block';
+    S.canvas=canvas; S.ctx=canvas.getContext('2d');
+    return canvas;
+  }
+
+  function intervalMs(){ return S.tf==='H1'?3600000:S.tf==='M15'?900000:S.tf==='M5'?300000:60000; }
+  function pushTick(price,time=Date.now()){
+    if(!Number.isFinite(price)||price<=0) return;
+    const step=intervalMs(); const bucket=Math.floor(time/step)*step;
+    let last=S.candles[S.candles.length-1];
+    if(!last || last.t!==bucket){
+      const prev=last?last.c:price; last={t:bucket,o:prev,h:Math.max(prev,price),l:Math.min(prev,price),c:price}; S.candles.push(last);
+      if(S.candles.length>S.maxCandles) S.candles.shift();
+    }else{ last.h=Math.max(last.h,price); last.l=Math.min(last.l,price); last.c=price; }
+  }
+  function seed(price){
+    if(S.candles.length||!Number.isFinite(price)) return;
+    const now=Date.now(), step=intervalMs(); let p=price;
+    for(let i=90;i>=1;i--){
+      const drift=(Math.sin(i/7)*0.55)+(Math.cos(i/11)*0.35);
+      const o=p; const c=price+drift; const h=Math.max(o,c)+0.35; const l=Math.min(o,c)-0.35;
+      S.candles.push({t:Math.floor((now-i*step)/step)*step,o,h,l,c}); p=c;
+    }
+  }
+  function ingest(s){
+    S.latest=s||S.latest||{};
+    const p=num(s.price)||num(s.bid)||num(s.ask)||num(s.close)||num(s.livePrice);
+    if(Number.isFinite(p)){ seed(p); pushTick(p); put('price',fmt(p)); put('chartPrice',fmt(p)); }
+    updatePanel(S.latest); schedule();
+  }
+
+  function normalizeObjects(s){
+    const out=[]; const push=(type,price,text)=>{ if(Number.isFinite(price)) out.push({type,price,text:text||type}); };
+    const read=(keys,type)=>{ for(const k of keys){ const v=s[k]; const n=num(v); if(Number.isFinite(n)) push(type,n,String(v)); }};
+    read(['sellZone','supply','supplyZone','supplyPrice','smc_supply','supplyLine'],'SUPPLY');
+    read(['buyZone','demand','demandZone','demandPrice','smc_demand','demandLine'],'DEMAND');
+    read(['fvg','fvgZone','fvgPrice'],'FVG');
+    read(['tp1'],'TP1'); read(['tp2'],'TP2'); read(['tp3'],'TP3');
+    read(['sl','stopLoss'],'SL');
+    ['objects','chartObjects','smcObjects'].forEach(k=>{
+      if(Array.isArray(s[k])) s[k].forEach(o=>{
+        const raw=((o.name||'')+' '+(o.text||'')+' '+(o.label||'')).toUpperCase();
+        const price=num(o.price)||num(o.value)||num(o.y)||num(o.text);
+        let type='';
+        if(/SUPPLY|SELL_ZONE|SELL AREA/.test(raw)) type='SUPPLY';
+        else if(/DEMAND|BUY_ZONE|BUY AREA/.test(raw)) type='DEMAND';
+        else if(/FVG/.test(raw)) type='FVG';
+        else if(/TP\s*1|TP1/.test(raw)) type='TP1';
+        else if(/TP\s*2|TP2/.test(raw)) type='TP2';
+        else if(/TP\s*3|TP3/.test(raw)) type='TP3';
+        else if(/SSL|BSL|LIQUIDITY/.test(raw)) type='LIQUIDITY';
+        if(type && Number.isFinite(price)) push(type,price,raw.slice(0,42));
+      });
+    });
+    return out;
+  }
+
+  function viewport(objects){
+    const c=S.candles.slice(-S.maxCandles);
+    let vals=[];
+    c.forEach(x=>{ vals.push(x.o,x.h,x.l,x.c); });
+    objects.forEach(o=>Number.isFinite(o.price)&&vals.push(o.price));
+    vals=vals.filter(Number.isFinite);
+    if(!vals.length) return {min:0,max:1};
+    vals.sort((a,b)=>a-b);
+    // spike filter: ignore extreme 2% tails for viewport but include live price/object via padding if close
+    let lo=vals[Math.floor(vals.length*0.02)]??vals[0];
+    let hi=vals[Math.ceil(vals.length*0.98)-1]??vals[vals.length-1];
+    const last=c[c.length-1]?.c;
+    if(Number.isFinite(last)){ lo=Math.min(lo,last); hi=Math.max(hi,last); }
+    // include objects that are not ridiculously far away
+    const mid=(lo+hi)/2, baseRange=Math.max(hi-lo,1);
+    objects.forEach(o=>{ if(Math.abs(o.price-mid)<baseRange*3){lo=Math.min(lo,o.price);hi=Math.max(hi,o.price);} });
+    let range=hi-lo; if(range<1) range=1;
+    const pad=Math.max(range*0.18,0.8);
+    return {min:lo-pad,max:hi+pad};
+  }
+
+  function draw(){
+    S.raf=0;
+    const canvas=ensureCanvas(); if(!canvas||!S.ctx) return;
+    const box=canvas.parentElement.getBoundingClientRect(); const w=Math.max(360,box.width), h=Math.max(280,box.height);
+    const dpr=window.devicePixelRatio||1;
+    if(canvas.width!==Math.floor(w*dpr)||canvas.height!==Math.floor(h*dpr)){ canvas.width=Math.floor(w*dpr); canvas.height=Math.floor(h*dpr); canvas.style.width=w+'px'; canvas.style.height=h+'px'; }
+    const ctx=S.ctx; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+    const L=56,R=58,T=44,B=36, plotW=w-L-R, plotH=h-T-B;
+    const objects=normalizeObjects(S.latest); const vp=viewport(objects); const y=v=>T+(vp.max-v)/(vp.max-vp.min)*plotH;
+    const c=S.candles.slice(-S.maxCandles);
+    // background
+    const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,'#061b43'); g.addColorStop(1,'#020716'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    // grid
+    ctx.strokeStyle='rgba(88,150,255,.18)'; ctx.lineWidth=1;
+    for(let i=0;i<=8;i++){ const x=L+i*plotW/8; ctx.beginPath();ctx.moveTo(x,T);ctx.lineTo(x,T+plotH);ctx.stroke(); }
+    for(let i=0;i<=6;i++){ const yy=T+i*plotH/6; ctx.beginPath();ctx.moveTo(L,yy);ctx.lineTo(L+plotW,yy);ctx.stroke(); }
+    // title
+    ctx.fillStyle='rgba(220,240,255,.9)'; ctx.font='800 13px Arial'; ctx.fillText('V16.3 Smart Viewport · '+S.tf,L,T-15);
+    // SMC overlay zones first
+    function line(price,color,label,dash=false){ if(!Number.isFinite(price)) return; const yy=y(price); if(yy<T-20||yy>T+plotH+20) return; ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=1.6; if(dash) ctx.setLineDash([6,5]); ctx.beginPath(); ctx.moveTo(L,yy); ctx.lineTo(L+plotW,yy); ctx.stroke(); ctx.restore(); return yy; }
+    const placed=[];
+    function label(price,color,text,side='left'){
+      let yy=line(price,color,text,/TP|LIQUIDITY/.test(text)); if(!Number.isFinite(yy)) return;
+      yy=Math.max(T+12,Math.min(T+plotH-12,yy));
+      for(const py of placed){ if(Math.abs(yy-py)<16) yy=py+16; }
+      placed.push(yy);
+      const x=side==='right'?L+plotW+6:L+8; ctx.font='800 12px Arial'; ctx.fillStyle=color; ctx.fillText(text+' '+fmt(price),x,yy-4);
+    }
+    objects.forEach(o=>{ const col=o.type==='SUPPLY'?'#ff5ca8':o.type==='DEMAND'?'#4fffd6':o.type==='FVG'?'#32d9ff':/^TP/.test(o.type)?'#ffd76a':o.type==='SL'?'#ff5959':'#fff'; label(o.price,col,o.type,o.type==='SUPPLY'||o.type==='DEMAND'?'left':'right'); });
+    // candles
+    if(c.length){ const cw=Math.max(3,plotW/Math.max(c.length,40)*0.55); c.forEach((bar,i)=>{ const x=L+(i+0.5)*plotW/c.length; const up=bar.c>=bar.o; const col=up?'#45ffd3':'#ff5d96'; const yo=y(bar.o), yc=y(bar.c), yh=y(bar.h), yl=y(bar.l); ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.beginPath(); ctx.moveTo(x,yh); ctx.lineTo(x,yl); ctx.stroke(); ctx.fillStyle=col; ctx.fillRect(x-cw/2,Math.min(yo,yc),cw,Math.max(2,Math.abs(yc-yo))); }); }
+    else{ ctx.fillStyle='rgba(255,215,106,.95)'; ctx.font='900 16px Arial'; ctx.fillText('WAITING REALTIME MT5 CANDLE FEED',L+20,T+45); }
+    // live price marker
+    const last=c[c.length-1]?.c||num(S.latest.price); if(Number.isFinite(last)){ const yy=y(last); ctx.strokeStyle='rgba(78,255,231,.65)'; ctx.setLineDash([5,5]); ctx.beginPath();ctx.moveTo(L,yy);ctx.lineTo(L+plotW,yy);ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle='#4fffd6'; roundRect(ctx,L+plotW+8,yy-13,58,26,7,true,false); ctx.fillStyle='#012233'; ctx.font='900 12px Arial'; ctx.fillText(fmt(last),L+plotW+13,yy+4); }
+    // bounds labels
+    ctx.fillStyle='rgba(220,240,255,.65)'; ctx.font='11px Arial'; ctx.fillText(fmt(vp.max),4,T+4); ctx.fillText(fmt(vp.min),4,T+plotH); 
+  }
+  function roundRect(ctx,x,y,w,h,r,fill,stroke){ if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x,y,w,h,r); if(fill)ctx.fill(); if(stroke)ctx.stroke(); return;} ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r); if(fill)ctx.fill(); if(stroke)ctx.stroke(); }
+  function schedule(){ if(!S.raf) S.raf=requestAnimationFrame(draw); }
+
+  function updatePanel(s){
+    const smc=s.smc||s;
+    const liq=show(smc.liquidity||s.liquidity||s.ssl||s.bsl);
+    const stop=show(smc.stopHunt||s.stopHunt||s.stophunt);
+    const sell=fmt(num(smc.sellZone)||num(smc.supply)||num(s.supply));
+    const buy=fmt(num(smc.buyZone)||num(smc.demand)||num(s.demand));
+    const fvg=show(smc.fvg||s.fvg||s.fvgZone);
+    put('liquidity',liq); put('stopHunt',stop); put('sellZone',sell); put('buyZone',buy); put('fvgZone',fvg);
+    put('tp1',fmt(num(s.tp1)||num(smc.tp1))); put('tp2',fmt(num(s.tp2)||num(smc.tp2))); put('tp3',fmt(num(s.tp3)||num(smc.tp3)));
+    const st=show(s.structure||s.trend||smc.structure); put('structure',st==='WAITING'?'WAITING':st);
+    const bc=show(s.bos||s.choch||smc.bos||smc.choch); put('bosChoch',bc);
+  }
+
+  async function pull(){ try{ const r=await fetch('/api/normalized?v='+Date.now(),{cache:'no-store'}); if(r.ok){ const j=await r.json(); ingest(j.normalized||j.latest||j); return; }}catch(e){} try{ const r=await fetch('/api/latest-signal?v='+Date.now(),{cache:'no-store'}); const j=await r.json(); ingest(j.latest||j.signal||j); }catch(e){} }
+  function stream(){ try{ if(S.stream) S.stream.close(); S.stream=new EventSource('/api/stream?v=163'); S.stream.onmessage=e=>{ try{ ingest(JSON.parse(e.data)); }catch(_){} }; }catch(e){} }
+  function init(){
+    document.querySelectorAll('.tf-tabs button, [data-tf]').forEach(btn=>btn.addEventListener('click',()=>{S.tf=(btn.dataset.tf||btn.textContent||'M1').trim().toUpperCase(); S.candles=[]; pull(); schedule();}));
+    ensureCanvas(); pull(); stream(); clearInterval(S.poll); S.poll=setInterval(pull,1800); schedule();
+  }
+  window.VYRO_V163={VERSION,ingest,draw,pull,stream,state:S};
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
 })();
