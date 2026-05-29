@@ -192,8 +192,8 @@ function saveSignal(signal){
 
 ensureDb();
 
-app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO V18.2 CLEAN BOS/CHOCH + V16.3 STABLE CORE',time:new Date().toISOString()}));
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO V18.2 CLEAN BOS/CHOCH + V16.3 STABLE CORE',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
+app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO V18.3 ANTI BLINK + SMC OBJECT READER READY',time:new Date().toISOString()}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO V18.3 ANTI BLINK + SMC OBJECT READER READY',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
 app.get('/api/test-login',(req,res)=>res.json({ok:true,admin:'admin / 2606',vip:'vip001 / 123456'}));
 
 app.post('/api/login',(req,res)=>{
@@ -232,7 +232,7 @@ app.get('/api/normalized',(req,res)=>{
 
 app.get('/api/debug/latest',(req,res)=>{
   res.set('Cache-Control','no-store');
-  res.json({ok:true, latest:latestSignalMemory, candles:candleHistory.slice(-20), streamClients:streamClients.length, version:'V16.3'});
+  res.json({ok:true, latest:latestSignalMemory, candles:candleHistory.slice(-20), streamClients:streamClients.length, version:'V18.3'});
 });
 
 app.get('/api/stream',(req,res)=>{
@@ -449,7 +449,7 @@ function buildNormalizedStreamPacket(signal){
   const s=signal||{};
   return {
     ok:true,
-    version:'V16.3',
+    version:'V18.3',
     timestamp:new Date().toISOString(),
     symbol:s.displaySymbol||s.symbol||'XAUUSD',
     price:s.price||s.bid||null,
@@ -462,29 +462,11 @@ function buildNormalizedStreamPacket(signal){
   };
 }
 
-
-// ===== V18.2 BOS/CHOCH ENGINE PATCH =====
-function normalizeBOSCHOCH(raw) {
-  const txt = JSON.stringify(raw || {}).toUpperCase().replace(/_/g, ' ');
-  let bos = 'WAITING';
-  let choch = 'WAITING';
-
-  if (txt.includes('BOS BUY') || txt.includes('BULLISH BOS')) bos = 'BOS BUY';
-  if (txt.includes('BOS SELL') || txt.includes('BEARISH BOS')) bos = 'BOS SELL';
-  if (txt.includes('CHOCH BUY') || txt.includes('BULLISH CHOCH')) choch = 'CHOCH BUY';
-  if (txt.includes('CHOCH SELL') || txt.includes('BEARISH CHOCH')) choch = 'CHOCH SELL';
-
-  const bosChoch = choch !== 'WAITING' ? choch : (bos !== 'WAITING' ? bos : 'WAITING');
-  return { bos, choch, bosChoch };
-}
-// ===== END V18.2 PATCH =====
-
 function receiveSignal(req,res){
   const raw=req.body||{};
   let d=normalizeSignal(raw);
   d=normalizeSMCFinal(d, raw);
   d=calculateAITargets(d, raw);
-  const bosPatch = normalizeBOSCHOCH(raw); d.bos = bosPatch.bos; d.choch = bosPatch.choch; d.bosChoch = bosPatch.bosChoch;
   saveSignal(d);
   res.set('Cache-Control','no-store');
   res.json({ok:true,received:d,normalized:buildNormalizedStreamPacket(d),realtime:true,demo:false,realtimeClients:streamClients.length+legacyClients.length});
@@ -509,4 +491,4 @@ app.use((req,res,next)=>{res.set('Cache-Control','no-store, no-cache, must-reval
 app.use(express.static(__dirname,{etag:false,maxAge:0,setHeaders:(res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');}}));
 app.use((req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
-app.listen(PORT,()=>console.log('VYRO V18.2 CLEAN BOS/CHOCH + V16.3 STABLE CORE running on '+PORT));
+app.listen(PORT,()=>console.log('VYRO V18.3 ANTI BLINK + SMC OBJECT READER READY running on '+PORT));
