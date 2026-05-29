@@ -1,0 +1,4 @@
+
+ADD BEFORE </body> IN index.html:
+
+<script src="vyro-v27-ai-agent-flow-delta-power.js?v=27.0"></script>
