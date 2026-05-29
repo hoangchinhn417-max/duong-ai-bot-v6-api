@@ -192,8 +192,8 @@ function saveSignal(signal){
 
 ensureDb();
 
-app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V16.5 ALL IN ONE INSTITUTIONAL STABLE',time:new Date().toISOString()}));
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V16.5 ALL IN ONE INSTITUTIONAL STABLE',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
+app.get('/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V16.6 MT5 REAL PRIORITY STABLE',time:new Date().toISOString()}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'VYRO PRO MAX TERMINAL V16.6 MT5 REAL PRIORITY STABLE',time:new Date().toISOString(),streamClients:streamClients.length,legacyClients:legacyClients.length}));
 app.get('/api/test-login',(req,res)=>res.json({ok:true,admin:'admin / 2606',vip:'vip001 / 123456'}));
 
 app.post('/api/login',(req,res)=>{
@@ -458,6 +458,7 @@ function buildNormalizedStreamPacket(signal){
     smc:s.smc||{},
     aiTargets:s.aiTargets||{},
     flow:s.flow, delta:s.delta, rsi:s.rsi, score:s.score||s.confidence,
+    power:s.power, momentumPower:s.momentumPower,
     flowValid:s.flowValid, deltaValid:s.deltaValid, agentConfirmed:s.agentConfirmed,
     multiConfirm:s.multiConfirm, institutional:s.institutional||{},
     stopHuntProb:s.stopHuntProb, sessionAI:s.sessionAI, killzoneAI:s.killzoneAI,
@@ -469,60 +470,60 @@ function buildNormalizedStreamPacket(signal){
 }
 
 
-// ===== V16.5 ALL-IN-ONE INSTITUTIONAL STABLE ADDON =====
-// Giữ nền server cũ ổn định, chỉ bổ sung dữ liệu cho dashboard nâng cấp.
+// ===== V16.6 MT5 REAL PRIORITY STABLE ADDON =====
+// Giữ server V16.3 ổn định nhưng ưu tiên tuyệt đối dữ liệu MT5_REAL.
+// Không clamp flow/delta trong server. Server nhận đúng số EA gửi.
+let vyroLastRealMT5At = 0;
+
 function stableBool(v){ return v === true || String(v).toLowerCase() === 'true'; }
 function stableNum(v){
   if(v===undefined || v===null || v==='') return null;
   const n = Number(String(v).replace(/[^0-9.\-]/g,''));
   return Number.isFinite(n) ? n : null;
 }
-function stableTxt(v, fb='WAITING'){
-  if(v===undefined || v===null || String(v).trim()==='') return fb;
-  return String(v).trim();
-}
-function normalizeGoldSymbol(sym){
+function normalizeGoldSymbolStable(sym){
   const raw = String(sym || '').trim();
   if(!raw) return 'XAUUSD';
-  const u = raw.toUpperCase();
-  if(u.includes('GOLD')) return raw;
-  if(u.includes('XAU')) return raw;
   return raw;
 }
-function calcSessionAI(){
+function isRealMT5Packet(raw){
+  const source = String(raw?.source || '').toUpperCase();
+  return source === 'MT5_REAL' || source === 'MT5_EA' || source === 'VYRO_MT5_BRIDGE';
+}
+function calcSessionAIStable(){
   const h = new Date().getUTCHours();
-  // UTC mapping approximate; frontend can localize if needed
   if(h>=0 && h<7) return 'ASIA ACCUMULATION';
   if(h>=7 && h<13) return 'LONDON MANIPULATION';
   if(h>=13 && h<22) return 'NEW YORK EXPANSION';
   return 'LOW LIQUIDITY';
 }
-function calcKillzone(){
+function calcKillzoneStable(){
   const h = new Date().getUTCHours();
-  if((h>=7 && h<=10) || (h>=13 && h<=16)) return 'ACTIVE';
-  return 'OFF';
+  return ((h>=7 && h<=10) || (h>=13 && h<=16)) ? 'ACTIVE' : 'OFF';
 }
-function calcStopHuntProb(d){
+function calcStopHuntProbStable(d){
   let score = 0;
   const delta = Math.abs(stableNum(d.delta) || 0);
   const flow = Math.abs(stableNum(d.flow) || 0);
   const liq = String(d.liquidity || d.smc?.liquidity || '').toUpperCase();
   const stop = String(d.stopHunt || d.smc?.stopHunt || '').toUpperCase();
-  if(delta > 300) score += 25;
-  if(flow > 1000) score += 25;
-  if(liq.includes('SSL') || liq.includes('BSL') || liq.includes('LIQUIDITY')) score += 30;
-  if(stop.includes('ARMED') || stop.includes('STOP')) score += 20;
+  if(delta > 80) score += 20;
+  if(delta > 250) score += 15;
+  if(flow > 500) score += 20;
+  if(flow > 1200) score += 15;
+  if(liq.includes('SSL') || liq.includes('BSL') || liq.includes('LIQUIDITY')) score += 20;
+  if(stop.includes('ARMED') || stop.includes('STOP')) score += 10;
   return Math.min(100, score);
 }
-function calcVolumeProfile(d){
+function calcVolumeProfileStable(d){
   const price = stableNum(d.price || d.bid || d.ask);
   if(!price) return {poc:'WAITING', vah:'WAITING', val:'WAITING', auctionState:'WAITING'};
   const atr = stableNum(d.atr) || Math.max(1.2, price * 0.00035);
   const delta = stableNum(d.delta) || 0;
   const flow = stableNum(d.flow) || 0;
   let auctionState = 'BALANCED';
-  if(delta > 300 && flow > 1000) auctionState = 'BUYER ACCEPTANCE';
-  if(delta < -300 && flow < -1000) auctionState = 'SELLER ACCEPTANCE';
+  if(delta > 80 && flow > 500) auctionState = 'BUYER ACCEPTANCE';
+  if(delta < -80 && flow < -500) auctionState = 'SELLER ACCEPTANCE';
   return {
     poc: Number(price.toFixed(2)),
     vah: Number((price + atr * 1.2).toFixed(2)),
@@ -530,24 +531,24 @@ function calcVolumeProfile(d){
     auctionState
   };
 }
-function calcAbsorption(d){
+function calcAbsorptionStable(d){
   const flow = stableNum(d.flow);
   const delta = stableNum(d.delta);
   if(flow===null || delta===null) return 'NONE';
-  if(flow > 1000 && delta < -150) return 'BUY ABSORPTION';
-  if(flow < -1000 && delta > 150) return 'SELL ABSORPTION';
-  if(Math.abs(flow) > 1500 && Math.abs(delta) < 120) return 'HIDDEN ABSORPTION';
+  if(flow > 700 && delta < -80) return 'BUY ABSORPTION';
+  if(flow < -700 && delta > 80) return 'SELL ABSORPTION';
+  if(Math.abs(flow) > 1200 && Math.abs(delta) < 80) return 'HIDDEN ABSORPTION';
   return 'NONE';
 }
-function calcTrapWarning(d){
+function calcTrapWarningStable(d){
   const delta = Math.abs(stableNum(d.delta) || 0);
   const flow = Math.abs(stableNum(d.flow) || 0);
   const structure = String(d.bosChoch || d.structure || d.smc?.bosChoch || '').toUpperCase();
-  if((structure.includes('BOS') || structure.includes('CHOCH')) && delta < 120) return 'FAKE BREAKOUT';
-  if(flow < 250) return 'WEAK FLOW';
+  if((structure.includes('BOS') || structure.includes('CHOCH')) && delta < 50) return 'FAKE BREAKOUT';
+  if(flow < 120) return 'WEAK FLOW';
   return 'CLEAR';
 }
-function calcRiskAI(d){
+function calcRiskAIStable(d){
   const dd = stableNum(d.drawdown || d.dd) || 0;
   const lot = stableNum(d.lot) || 0;
   const losses = stableNum(d.losses) || 0;
@@ -558,65 +559,115 @@ function calcRiskAI(d){
   let lotProtection = 'SAFE';
   if(lot >= 1) lotProtection = 'HIGH LOT';
   if(lot >= 3) lotProtection = 'DANGER LOT';
-  let revengeAI = losses >= 3 ? 'BLOCKED' : 'OFF';
-  return {riskAI:risk, lotProtection, revengeAI};
+  return {riskAI:risk, lotProtection, revengeAI:losses >= 3 ? 'BLOCKED' : 'OFF'};
 }
-function calcMultiConfirm(d){
+function calcMultiConfirmStable(d){
   let confirm = 0;
   const flow = stableNum(d.flow);
   const delta = stableNum(d.delta);
   const rsi = stableNum(d.rsi);
   const structure = String(d.bosChoch || d.structure || d.smc?.bosChoch || '').toUpperCase();
   const liq = String(d.liquidity || d.smc?.liquidity || '').toUpperCase();
-  if(flow !== null && Math.abs(flow) > 500) confirm++;
-  if(delta !== null && Math.abs(delta) > 250) confirm++;
+  if(flow !== null && Math.abs(flow) > 300) confirm++;
+  if(delta !== null && Math.abs(delta) > 50) confirm++;
   if(structure.includes('BOS') || structure.includes('CHOCH')) confirm++;
   if(liq.includes('SSL') || liq.includes('BSL') || liq.includes('LIQUIDITY')) confirm++;
   if(rsi !== null && (rsi >= 55 || rsi <= 45)) confirm++;
   if(d.flowValid === true && d.deltaValid === true) confirm++;
   return `${confirm}/6`;
 }
-function applyStableEACompat(d, raw){
+function applyMT5RealPriorityStable(d, raw){
   raw = raw || {};
   d = d || {};
 
-  d.source = raw.source || d.source || 'MT5_REAL';
-  d.rawSymbol = raw.symbol || d.rawSymbol || d.symbol || '';
-  d.symbol = normalizeGoldSymbol(raw.displaySymbol || raw.symbol || d.symbol || 'XAUUSD');
+  const real = isRealMT5Packet(raw);
 
-  const flowNumber = Number.isFinite(Number(d.flow));
-  const deltaNumber = Number.isFinite(Number(d.delta));
-  d.flowValid = stableBool(raw.flowValid) || stableBool(raw.flow_valid) || flowNumber;
-  d.deltaValid = stableBool(raw.deltaValid) || stableBool(raw.delta_valid) || deltaNumber;
-  d.agentConfirmed = stableBool(raw.agentConfirmed) || stableBool(raw.agent_confirmed);
+  // Ưu tiên raw từ EA MT5_REAL, không để normalize overwrite sai.
+  if(real){
+    d.source = raw.source || 'MT5_REAL';
+    d.symbol = normalizeGoldSymbolStable(raw.displaySymbol || raw.symbol || d.symbol || 'XAUUSD');
+    d.rawSymbol = raw.symbol || d.rawSymbol || d.symbol || '';
 
-  // Nếu chưa có agentConfirmed thì hạ BUY NOW/SELL NOW về bias, không reject dữ liệu.
+    const rawPrice = stableNum(raw.price);
+    const rawRsi = stableNum(raw.rsi);
+    const rawFlow = stableNum(raw.flow);
+    const rawDelta = stableNum(raw.delta);
+    const rawPower = stableNum(raw.power ?? raw.momentumPower);
+
+    if(rawPrice !== null) d.price = rawPrice;
+    if(rawRsi !== null) d.rsi = rawRsi;
+    if(rawFlow !== null) d.flow = rawFlow;
+    if(rawDelta !== null) d.delta = rawDelta;
+    if(rawPower !== null){
+      d.power = rawPower;
+      d.momentumPower = rawPower;
+    }
+
+    d.flowValid = rawFlow !== null && (stableBool(raw.flowValid) || raw.flowValid === undefined);
+    d.deltaValid = rawDelta !== null && (stableBool(raw.deltaValid) || raw.deltaValid === undefined);
+    d.agentConfirmed = stableBool(raw.agentConfirmed);
+
+    d.signal = raw.signal || d.signal || 'WAIT';
+    d.status = raw.status || d.signal || 'WAIT';
+    d.direction = raw.direction || d.direction || d.signal || 'WAIT';
+
+    vyroLastRealMT5At = Date.now();
+  }else{
+    d.source = raw.source || d.source || 'UNKNOWN';
+    d.symbol = normalizeGoldSymbolStable(raw.displaySymbol || raw.symbol || d.symbol || 'XAUUSD');
+    d.flowValid = stableBool(raw.flowValid) || Number.isFinite(Number(d.flow));
+    d.deltaValid = stableBool(raw.deltaValid) || Number.isFinite(Number(d.delta));
+    d.agentConfirmed = stableBool(raw.agentConfirmed);
+
+    // Nếu vừa nhận MT5_REAL trong 10 giây gần nhất, không cho packet WAIT/demo đè flow/delta thật.
+    if(Date.now() - vyroLastRealMT5At < 10000 && latestSignalMemory && latestSignalMemory.source === 'MT5_REAL'){
+      const lowSignal = String(d.signal || d.status || '').toUpperCase();
+      const lowSource = String(d.source || '').toUpperCase();
+      if(lowSignal === 'WAIT' || lowSource.includes('WAITING') || lowSource.includes('TEST') || lowSource.includes('DEMO')){
+        d.flow = latestSignalMemory.flow;
+        d.delta = latestSignalMemory.delta;
+        d.power = latestSignalMemory.power;
+        d.momentumPower = latestSignalMemory.momentumPower;
+        d.rsi = d.rsi || latestSignalMemory.rsi;
+        d.price = d.price || latestSignalMemory.price;
+        d.source = latestSignalMemory.source;
+        d.flowValid = latestSignalMemory.flowValid;
+        d.deltaValid = latestSignalMemory.deltaValid;
+      }
+    }
+  }
+
+  // Không reject dữ liệu. Chỉ hạ BUY NOW/SELL NOW khi chưa có agent confirm.
   const sig = String(d.signal || '').toUpperCase();
   if(!d.agentConfirmed && (sig === 'BUY NOW' || sig === 'SELL NOW')){
     d.status = 'WAIT CONFIRM';
     d.signal = sig.includes('BUY') ? 'BUY BIAS' : 'SELL BIAS';
   }
 
-  d.sessionAI = calcSessionAI();
-  d.killzoneAI = calcKillzone();
+  d.sessionAI = calcSessionAIStable();
+  d.killzoneAI = calcKillzoneStable();
 
-  const vp = calcVolumeProfile(d);
+  const vp = calcVolumeProfileStable(d);
   d.volumeProfile = vp;
-  d.poc = vp.poc; d.vah = vp.vah; d.val = vp.val; d.auctionState = vp.auctionState;
+  d.poc = vp.poc;
+  d.vah = vp.vah;
+  d.val = vp.val;
+  d.auctionState = vp.auctionState;
 
-  d.stopHuntProb = calcStopHuntProb(d);
-  d.absorptionStatus = calcAbsorption(d);
-  d.trapWarning = calcTrapWarning(d);
+  d.stopHuntProb = calcStopHuntProbStable(d);
+  d.absorptionStatus = calcAbsorptionStable(d);
+  d.trapWarning = calcTrapWarningStable(d);
 
-  const risk = calcRiskAI(d);
+  const risk = calcRiskAIStable(d);
   d.riskAI = risk.riskAI;
   d.lotProtection = risk.lotProtection;
   d.revengeAI = risk.revengeAI;
 
-  d.multiConfirm = calcMultiConfirm(d);
+  d.multiConfirm = calcMultiConfirmStable(d);
 
   d.institutional = {
-    version:'V16.5',
+    version:'V16.6',
+    source:d.source,
     flowValid:d.flowValid,
     deltaValid:d.deltaValid,
     agentConfirmed:d.agentConfirmed,
@@ -640,7 +691,7 @@ function receiveSignal(req,res){
   let d=normalizeSignal(raw);
   d=normalizeSMCFinal(d, raw);
   d=calculateAITargets(d, raw);
-  d=applyStableEACompat(d, raw);
+  d=applyMT5RealPriorityStable(d, raw);
   saveSignal(d);
   res.set('Cache-Control','no-store');
   res.json({ok:true,received:d,normalized:buildNormalizedStreamPacket(d),realtime:true,demo:false,realtimeClients:streamClients.length+legacyClients.length});
@@ -656,11 +707,11 @@ app.get('/api/reset-signal',(req,res)=>{
 });
 
 app.post('/api/test-signal',(req,res)=>{
-  return res.status(403).json({ok:false,error:'TEST_SIGNAL_DISABLED_IN_STABLE_BUILD'});
+  return res.status(403).json({ok:false,error:'TEST_SIGNAL_DISABLED_REAL_PRIORITY'});
 });
 
 app.use((req,res,next)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');next();});
 app.use(express.static(__dirname,{etag:false,maxAge:0,setHeaders:(res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');}}));
 app.use((req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
-app.listen(PORT,()=>console.log('VYRO PRO MAX TERMINAL V16.5 ALL IN ONE INSTITUTIONAL STABLE running on '+PORT));
+app.listen(PORT,()=>console.log('VYRO PRO MAX TERMINAL V16.6 MT5 REAL PRIORITY STABLE running on '+PORT));
