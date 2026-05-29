@@ -467,6 +467,7 @@ function receiveSignal(req,res){
   let d=normalizeSignal(raw);
   d=normalizeSMCFinal(d, raw);
   d=calculateAITargets(d, raw);
+  d=vyroEnforceRealDataLock(d, raw);
   saveSignal(d);
   res.set('Cache-Control','no-store');
   res.json({ok:true,received:d,normalized:buildNormalizedStreamPacket(d),realtime:true,demo:false,realtimeClients:streamClients.length+legacyClients.length});
