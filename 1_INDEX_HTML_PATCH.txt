@@ -1,0 +1,6 @@
+<!-- REPLACE OLD SCRIPT LINES WITH THESE 2 LINES -->
+
+<script src="script.js?v=19.0-real-flow-lock"></script>
+<script src="vyro-client-ai-agent-real-flow-gate.js?v=19.0"></script>
+
+<!-- PUT ABOVE </body> -->
