@@ -710,6 +710,17 @@ app.post('/api/test-signal',(req,res)=>{
   return res.status(403).json({ok:false,error:'TEST_SIGNAL_DISABLED_REAL_PRIORITY'});
 });
 
+
+// ===== VYRO ADMIN HIDDEN ROUTES FIX =====
+app.get('/admin-secret',(req,res)=>{
+  res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.sendFile(path.join(__dirname,'admin.html'));
+});
+app.get('/admin',(req,res)=>{
+  res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.sendFile(path.join(__dirname,'admin.html'));
+});
+
 app.use((req,res,next)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');next();});
 app.use(express.static(__dirname,{etag:false,maxAge:0,setHeaders:(res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');}}));
 app.use((req,res)=>res.sendFile(path.join(__dirname,'index.html')));
