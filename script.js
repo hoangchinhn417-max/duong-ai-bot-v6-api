@@ -2,7 +2,7 @@ const APP_VERSION='VYRO_PRO_MAX_TERMINAL_V16_2_JSON_SMC_AI_TP_ENGINE';
 const USER_KEY='vyro_pro_users';
 const PIN_KEY='vyro_pro_pin';
 const SESSION_KEY='vyro_pro_session';
-const CUSTOMER_LOGIN_MODE='USER_PASS';
+const ONE_CODE_LOGIN_FIX='1';
 
 let users=[],currentUser=null,ADMIN_PIN=localStorage.getItem(PIN_KEY)||'2606';
 let API_BASE=window.location.origin,eventSource=null,lastDataTime=0,heartbeatTimer=null,hasRealtimeData=false;
@@ -15,8 +15,7 @@ function initUsers(){
     users=[
       {username:'admin',password:'2606',name:'Master Admin',plan:'vip',status:'active',expire:'2099-12-31',admin:true,email:'',createdAt:new Date().toISOString()},
       {username:'vip001',password:'123456',name:'VIP Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()},
-      {username:'vip002',password:'123456',name:'VIP Client 2',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()},
-      {username:'VYRO-8888',password:'8888',name:'VYRO Default Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()}
+      {username:'VYRO-8888',password:'VYRO-8888',name:'VYRO Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()}
     ];
     saveUsers();
   }
@@ -25,6 +24,13 @@ function initUsers(){
 function ensureAdmin(){
   if(!users.find(u=>u.username==='admin')){
     users.unshift({username:'admin',password:'2606',name:'Master Admin',plan:'vip',status:'active',expire:'2099-12-31',admin:true,email:'',createdAt:new Date().toISOString()});
+    saveUsers();
+  }
+  ensureDefaultCode();
+}
+function ensureDefaultCode(){
+  if(!users.find(u=>String(u.username).toUpperCase()==='VYRO-8888')){
+    users.push({username:'VYRO-8888',password:'VYRO-8888',name:'VYRO Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()});
     saveUsers();
   }
 }
@@ -40,7 +46,7 @@ function safeUserArg(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,
 function togglePass(id){let el=$(id);el.type=el.type==='password'?'text':'password'}
 function setLoginLoading(on){let b=$('loginBtn');if(!b)return;b.classList.toggle('loading',!!on);$('loginBtnText').innerText=on?'Đang kiểm tra...':'Vào hệ thống'}
 function markLoginError(){
-  ['loginUser','loginPass'].forEach(id=>{
+  ['loginUser'].forEach(id=>{
     let el=$(id);
     if(!el) return;
     let wrap=el.closest('.input-wrap')||el;
@@ -61,44 +67,43 @@ function registerNow(){
 }
 
 function loginNow(){
-  let u = $('loginUser').value.trim();
-  let p = $('loginPass').value.trim();
+  let code = $('loginUser').value.trim();
 
   setLoginLoading(true);
 
   setTimeout(()=>{
-    if(!u || !p){
+    if(!code){
       setLoginLoading(false);
       markLoginError();
-      return showToast('Nhập mã khách và mật khẩu');
+      return showToast('Nhập mã truy cập');
     }
 
-    const user = users.find(x =>
-      String(x.username).toLowerCase() === u.toLowerCase() &&
-      String(x.password) === p
+    let user = users.find(x =>
+      String(x.username).toUpperCase() === code.toUpperCase() ||
+      String(x.password).toUpperCase() === code.toUpperCase()
     );
 
     if(!user){
       setLoginLoading(false);
       markLoginError();
-      return showToast('Sai mã khách hoặc mật khẩu');
+      return showToast('Sai mã truy cập');
     }
 
     if(user.status === 'pending'){
       setLoginLoading(false);
-      return showToast('Tài khoản đang chờ duyệt');
+      return showToast('Mã đang chờ duyệt');
     }
 
-    if(user.status === 'expired' || new Date(user.expire + 'T23:59:59') < new Date()){
+    if(user.status === 'expired' || user.status === 'locked' || new Date(user.expire + 'T23:59:59') < new Date()){
       setLoginLoading(false);
-      return showToast('Tài khoản hết hạn hoặc đã bị khóa');
+      return showToast('Mã đã bị khóa hoặc hết hạn');
     }
 
     currentUser = user;
     localStorage.setItem(SESSION_KEY, user.username);
     enterApp(user);
     setLoginLoading(false);
-  }, 160);
+  }, 120);
 }
 function enterApp(user){
   $('accountName').innerText=user.name||user.username;
@@ -223,7 +228,7 @@ async function pullLatest(){
 }
 function showWaitingRealtime(){
   if(hasRealtimeData) return;
-  updateSignal({symbol:'XAUUSD.G',timeframe:'M1',signal:'WAIT',score:55,price:'--',rsi:'--',flow:'--',delta:'--',power:'--',buySell:'--',reason:'Đang chờ dữ liệu realtime từ MT5 EA Bridge.',trend:'WAITING',liquidity:'WAITING',pressure:'WAITING',risk:'WAITING',source:'WAITING_FOR_MT5',realtime:false});
+  updateSignal({symbol: window.currentSymbol || 'WAIT',timeframe:'M1',signal:'WAIT',score:55,price:'--',rsi:'--',flow:'--',delta:'--',power:'--',buySell:'--',reason:'Đang chờ dữ liệu realtime từ MT5 EA Bridge.',trend:'WAITING',liquidity:'WAITING',pressure:'WAITING',risk:'WAITING',source:'WAITING_FOR_MT5',realtime:false});
 }
 function norm(v){let s=String(v||'WAIT').toUpperCase();if(s.includes('SELL'))return'SELL NOW';if(s.includes('BUY'))return'BUY NOW';return'WAIT'}
 function nval(v){let x=Number(v);return isNaN(x)?0:x}
@@ -263,6 +268,16 @@ function cleanZone(v){ return cleanDisplay(v,'--'); }
 
 function dominanceFrom(s,sig){let f=nval(rawFlow(s)),d=nval(rawDelta(s));if(f<0&&d<0)return'Seller dominant';if(f>0&&d>0)return'Buyer dominant';if(sig.includes('SELL'))return'Seller dominant';if(sig.includes('BUY'))return'Buyer dominant';return'Mixed'}
 function updateSignal(s){
+
+  window.currentSymbol =
+    s.symbol ||
+    s.displaySymbol ||
+    s.pair ||
+    s.mt5Symbol ||
+    s.chartSymbol ||
+    window.currentSymbol ||
+    'WAIT';
+
   if(s && s.realtime!==false && s.source!=='WAITING_FOR_MT5') hasRealtimeData=true;
   let sig=norm(s.signal),sc=Math.max(0,Math.min(100,Number(s.score||s.confidence||s.conf||55))),p=s.price||s.bid||s.ask||'--',fv=rawFlow(s),dv=rawDelta(s),pv=rawPower(s),bs=rawBuySell(s),dom=dominanceFrom(s,sig);
   let sellZ=cleanZone(zoneVal(s,'sell')), buyZ=cleanZone(zoneVal(s,'buy'));
