@@ -15,30 +15,27 @@
     <div class="login-card">
       <div class="login-logo-wrap"><img src="./assets/vyro-logo.jpeg?v=1361" alt="VYRO PRO" class="login-logo" onerror="this.outerHTML='<div class=&quot;logoFallback loginFallback&quot;>VYRO<span>PRO</span><small>AI TRADING SYSTEM</small></div>'"></div>
 
-      <div class="tabs">
-        <button id="tabLogin" class="active" onclick="switchTab('login')"><span>↪</span> Đăng nhập</button>
-        <button id="tabReg" onclick="switchTab('reg')"><span>♙</span> Đăng ký khách</button>
+      <div class="access-title">
+        <h2>Nhập mã truy cập</h2>
+        <p>Khách có mã mới vào được hệ thống VYRO.</p>
       </div>
 
       <div id="loginForm">
-        <label>Tài khoản</label>
-        <div class="input-wrap"><span>♙</span><input id="loginUser" autocomplete="username" placeholder="Nhập tài khoản"></div>
-        <label>Mật khẩu</label>
-        <div class="input-wrap"><span>▣</span><input id="loginPass" autocomplete="current-password" type="password" placeholder="Nhập mật khẩu"><button class="eye" type="button" onclick="togglePass('loginPass')">⌧</button></div>
-        <button id="loginBtn" class="primary full" onclick="loginNow()"><span id="loginBtnText">Vào hệ thống</span></button>
-        <button class="ghost full mini" onclick="showForgot()">🛡 Quên mật khẩu?</button>
-        <div class="feature-row"><div><b>PRECISION</b><small>Độ chính xác cao</small></div><div><b>INTELLIGENCE</b><small>AI thông minh</small></div><div><b>EXECUTION</b><small>Thực thi tối ưu</small></div></div>
-      </div>
-
-      <div id="regForm" class="hidden">
-        <label>Họ tên</label><input id="regName" placeholder="Nguyễn Văn A">
-        <label>Số điện thoại / Username</label><input id="regUser" placeholder="090...">
-        <label>Email</label><input id="regEmail" placeholder="email@gmail.com">
-        <label>Mật khẩu</label><input id="regPass" type="password" placeholder="Tạo mật khẩu">
-        <label>Gói đăng ký</label>
-        <select id="regPlan"><option value="basic">Basic AI</option><option value="pro" selected>Pro AI</option><option value="vip">VIP Smart Flow</option></select>
-        <button class="primary full" onclick="registerNow()">Tạo tài khoản</button>
-        <small>Tài khoản mới sẽ ở trạng thái chờ duyệt.</small>
+        <label>Mã truy cập</label>
+        <div class="input-wrap">
+          <span>🔐</span>
+          <input id="loginUser" autocomplete="off" placeholder="Nhập mã VYRO">
+        </div>
+        <input id="loginPass" type="hidden" value="">
+        <button id="loginBtn" class="primary full" onclick="loginNow()">
+          <span id="loginBtnText">Vào hệ thống</span>
+        </button>
+        <small class="access-note">Ví dụ: VYRO-8888. Admin vào bằng link ẩn /admin-secret.</small>
+        <div class="feature-row">
+          <div><b>PRECISION</b><small>Độ chính xác cao</small></div>
+          <div><b>INTELLIGENCE</b><small>AI thông minh</small></div>
+          <div><b>EXECUTION</b><small>Thực thi tối ưu</small></div>
+        </div>
       </div>
     </div>
   </section>
@@ -219,6 +216,6 @@
   </div>
   <div id="toast" class="toast">Done</div>
 <script src="vyro-v27-ai-agent-flow-delta-power.js?v=27.0"></script>
-<script src="script.js?v=18.8-ai-agent-gate"></script>
+<script src="script.js?v=ACCESS_ADMIN_FINAL_1"></script>
 </body>
 </html>

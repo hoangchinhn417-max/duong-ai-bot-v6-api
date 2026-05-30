@@ -1,68 +1,41 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <title>VYRO PRO · Hidden Admin</title>
-  <style>
-    *{box-sizing:border-box} html,body{margin:0;min-height:100%;font-family:Arial,Helvetica,sans-serif;background:#050b1f;color:#eaffff}
-    body{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:18px;background:radial-gradient(circle at 50% 20%,#112b89 0,#071536 42%,#040817 100%)}
-    .card{width:min(420px,100%);border:1px solid rgba(47,105,255,.75);border-radius:24px;background:linear-gradient(145deg,rgba(16,27,72,.98),rgba(7,21,54,.98));box-shadow:0 0 45px rgba(20,90,255,.35);padding:26px;text-align:center}
-    .logo{font-size:48px;font-weight:1000;letter-spacing:2px;color:#09d9ff;text-shadow:0 0 25px rgba(0,210,255,.65);margin-bottom:8px}
-    h1{font-size:24px;margin:8px 0 6px} p{color:#9ecbff;margin:0 0 18px;line-height:1.45}
-    label{display:block;text-align:left;color:#9ecbff;margin:12px 0 7px;font-size:14px}
-    input{width:100%;font-size:16px;padding:15px 14px;border-radius:13px;border:1px solid #285cff;background:#0d1840;color:#fff;font-weight:800;outline:none}
-    button{width:100%;padding:15px;margin-top:14px;border:0;border-radius:13px;background:#087bff;color:#fff;font-weight:1000;font-size:15px;cursor:pointer}
-    button.secondary{background:#132451;border:1px solid #2b61ff}
-    .msg{min-height:22px;margin-top:13px;color:#ff9ab0;font-weight:800}.ok{color:#53ffd9}.small{font-size:12px;color:#7faeff;margin-top:14px}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VYRO PRO Hidden Admin</title>
+<link rel="stylesheet" href="style.css?v=ACCESS_ADMIN_FINAL_1">
+<style>
+  body{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:18px}
+  .admin-secret-card{width:min(420px,100%);padding:26px;border:1px solid rgba(50,140,255,.45);border-radius:24px;background:rgba(6,17,45,.92);box-shadow:0 0 42px rgba(0,180,255,.22)}
+  .admin-secret-card img{display:block;width:150px;max-width:42vw;margin:0 auto 18px;border-radius:8px}
+  .admin-secret-card h1{text-align:center;margin:0 0 8px;color:#eaf6ff}
+  .admin-secret-card p{text-align:center;color:#8dbdfc;margin:0 0 20px}
+  .admin-secret-card input{font-size:16px}
+</style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo">VYRO</div>
-    <h1>Hidden Admin</h1>
-    <p>Đăng nhập admin để mở khu quản trị. Khách thường không thấy trang này.</p>
-    <label>Tài khoản admin</label>
-    <input id="adminUser" value="admin" autocomplete="username">
-    <label>Mật khẩu admin</label>
-    <input id="adminPass" type="password" placeholder="Nhập mật khẩu admin" autocomplete="current-password">
-    <button id="adminBtn" onclick="adminLogin()">VÀO ADMIN</button>
-    <button class="secondary" onclick="goHome()">VỀ TRANG CHÍNH</button>
-    <div id="msg" class="msg"></div>
-    <div class="small">Mặc định nếu chưa đổi: admin / 2606</div>
+  <div class="glow a"></div><div class="glow b"></div><div class="grid-bg"></div>
+  <div class="admin-secret-card">
+    <img src="./assets/vyro-logo.jpeg" alt="VYRO">
+    <h1>Admin Ẩn</h1>
+    <p>Nhập pass admin để vào bảng quản trị.</p>
+    <div class="input-wrap"><span>🔐</span><input id="adminPass" type="password" placeholder="Nhập pass admin" onkeydown="if(event.key==='Enter')adminEnter()"></div>
+    <button class="primary full" onclick="adminEnter()">Vào Admin</button>
+    <small id="adminMsg" style="display:block;text-align:center;color:#ff8fa3;margin-top:12px"></small>
   </div>
 <script>
-const SESSION_KEY='vyro_pro_session';
-const USER_KEY='vyro_pro_users';
-function $(id){return document.getElementById(id)}
-function setMsg(t,ok=false){const m=$('msg');m.textContent=t||'';m.className='msg '+(ok?'ok':'')}
-function cacheAdminUser(user){
-  try{
-    let arr=[]; try{arr=JSON.parse(localStorage.getItem(USER_KEY)||'[]')}catch(e){arr=[]}
-    if(!Array.isArray(arr)) arr=[];
-    const u={username:user.username||'admin',password:$('adminPass').value.trim(),name:user.name||'Master Admin',plan:user.plan||'vip',status:'active',expire:user.expire||'2099-12-31',admin:true,email:user.email||'',createdAt:user.createdAt||new Date().toISOString()};
-    const i=arr.findIndex(x=>String(x.username).toLowerCase()===String(u.username).toLowerCase());
-    if(i>=0) arr[i]={...arr[i],...u}; else arr.unshift(u);
-    localStorage.setItem(USER_KEY,JSON.stringify(arr));
-    localStorage.setItem(SESSION_KEY,u.username);
-  }catch(e){ localStorage.setItem(SESSION_KEY,'admin'); }
+const ADMIN_PASSES = ['pass-admin-cua-anh','2606','ADMIN-2606'];
+function adminEnter(){
+  const pass = document.getElementById('adminPass').value.trim();
+  if(!ADMIN_PASSES.includes(pass)){
+    document.getElementById('adminMsg').innerText='Sai pass admin';
+    return;
+  }
+  localStorage.setItem('vyro_pro_session','admin');
+  localStorage.setItem('vyro_pro_pin','2606');
+  location.href='/?admin=1#admin';
 }
-async function adminLogin(){
-  const username=$('adminUser').value.trim()||'admin';
-  const password=$('adminPass').value.trim();
-  if(!password){setMsg('Nhập mật khẩu admin');return}
-  $('adminBtn').disabled=true; setMsg('Đang kiểm tra...',true);
-  try{
-    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok || !j.ok || !j.user || !j.user.admin){throw new Error(j.message||'Sai admin hoặc không có quyền admin')}
-    cacheAdminUser(j.user);
-    setMsg('Đăng nhập admin thành công. Đang mở quản trị...',true);
-    setTimeout(()=>{location.replace('/#admin')},350);
-  }catch(e){setMsg(e.message||'Không vào được admin');$('adminBtn').disabled=false;}
-}
-function goHome(){location.href='/'}
-window.addEventListener('keydown',e=>{if(e.key==='Enter')adminLogin()});
 </script>
 </body>
 </html>
