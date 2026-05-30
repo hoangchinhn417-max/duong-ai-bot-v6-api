@@ -2,12 +2,7 @@ const APP_VERSION='VYRO_PRO_MAX_TERMINAL_V16_2_JSON_SMC_AI_TP_ENGINE';
 const USER_KEY='vyro_pro_users';
 const PIN_KEY='vyro_pro_pin';
 const SESSION_KEY='vyro_pro_session';
-const ACCESS_CODES_KEY='vyro_access_codes';
-const DEFAULT_ACCESS_CODES=[
-  {code:'VYRO-8888', name:'VYRO Client', plan:'pro', days:30, active:true},
-  {code:'VIP001', name:'VIP Client', plan:'vip', days:90, active:true}
-];
-const ADMIN_ACCESS_CODE='ADMIN-2606';
+const CUSTOMER_LOGIN_MODE='USER_PASS';
 
 let users=[],currentUser=null,ADMIN_PIN=localStorage.getItem(PIN_KEY)||'2606';
 let API_BASE=window.location.origin,eventSource=null,lastDataTime=0,heartbeatTimer=null,hasRealtimeData=false;
@@ -19,27 +14,19 @@ function initUsers(){
   if(!users.length){
     users=[
       {username:'admin',password:'2606',name:'Master Admin',plan:'vip',status:'active',expire:'2099-12-31',admin:true,email:'',createdAt:new Date().toISOString()},
-      {username:'VYRO-8888',password:'VYRO-8888',name:'VYRO Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()},
-      {username:'VIP001',password:'VIP001',name:'VIP Client',plan:'vip',status:'active',expire:addDays(90),admin:false,email:'',createdAt:new Date().toISOString()}
+      {username:'vip001',password:'123456',name:'VIP Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()},
+      {username:'vip002',password:'123456',name:'VIP Client 2',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()},
+      {username:'VYRO-8888',password:'8888',name:'VYRO Default Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()}
     ];
     saveUsers();
   }
   ensureAdmin();
-  ensureAccessCodes();
 }
 function ensureAdmin(){
   if(!users.find(u=>u.username==='admin')){
     users.unshift({username:'admin',password:'2606',name:'Master Admin',plan:'vip',status:'active',expire:'2099-12-31',admin:true,email:'',createdAt:new Date().toISOString()});
     saveUsers();
   }
-}
-function ensureAccessCodes(){
-  DEFAULT_ACCESS_CODES.forEach(c=>{
-    if(!users.find(u=>String(u.username).toUpperCase()===String(c.code).toUpperCase())){
-      users.push({username:c.code,password:c.code,name:c.name,plan:c.plan,status:c.active?'active':'expired',expire:addDays(c.days||30),admin:false,email:'',createdAt:new Date().toISOString()});
-    }
-  });
-  saveUsers();
 }
 function saveUsers(){localStorage.setItem(USER_KEY,JSON.stringify(users))}
 function addDays(d,from){
@@ -52,7 +39,15 @@ function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;',
 function safeUserArg(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 function togglePass(id){let el=$(id);el.type=el.type==='password'?'text':'password'}
 function setLoginLoading(on){let b=$('loginBtn');if(!b)return;b.classList.toggle('loading',!!on);$('loginBtnText').innerText=on?'Đang kiểm tra...':'Vào hệ thống'}
-function markLoginError(){['loginUser'].forEach(id=>{let el=$(id); if(!el)return; let wrap=el.closest('.input-wrap')||el; wrap.classList.add('input-error');setTimeout(()=>wrap.classList.remove('input-error'),450)})}
+function markLoginError(){
+  ['loginUser','loginPass'].forEach(id=>{
+    let el=$(id);
+    if(!el) return;
+    let wrap=el.closest('.input-wrap')||el;
+    wrap.classList.add('input-error');
+    setTimeout(()=>wrap.classList.remove('input-error'),450);
+  });
+})}
 function showForgot(){showToast('Liên hệ quản trị VYRO để reset mật khẩu')}
 function switchTab(m){$('tabLogin').classList.toggle('active',m==='login');$('tabReg').classList.toggle('active',m==='reg');$('loginForm').classList.toggle('hidden',m!=='login');$('regForm').classList.toggle('hidden',m!=='reg')}
 
@@ -66,52 +61,44 @@ function registerNow(){
 }
 
 function loginNow(){
-  let code = $('loginUser').value.trim();
+  let u = $('loginUser').value.trim();
+  let p = $('loginPass').value.trim();
+
   setLoginLoading(true);
+
   setTimeout(()=>{
-    if(!code){
+    if(!u || !p){
       setLoginLoading(false);
       markLoginError();
-      return showToast('Nhập mã truy cập');
+      return showToast('Nhập mã khách và mật khẩu');
     }
 
-    // Admin dùng link ẩn /admin-secret; vẫn cho phép mã ADMIN-2606 để vào nhanh khi cần.
-    if(code === ADMIN_ACCESS_CODE){
-      let admin = users.find(x=>x.username==='admin');
-      if(!admin){
-        admin={username:'admin',password:'2606',name:'Master Admin',plan:'vip',status:'active',expire:'2099-12-31',admin:true,email:'',createdAt:new Date().toISOString()};
-        users.unshift(admin); saveUsers();
-      }
-      currentUser = admin;
-      localStorage.setItem(SESSION_KEY, admin.username);
-      enterApp(admin);
-      setLoginLoading(false);
-      return;
-    }
-
-    let user = users.find(x =>
-      String(x.username).toUpperCase() === code.toUpperCase() ||
-      String(x.password).toUpperCase() === code.toUpperCase()
+    const user = users.find(x =>
+      String(x.username).toLowerCase() === u.toLowerCase() &&
+      String(x.password) === p
     );
 
     if(!user){
       setLoginLoading(false);
       markLoginError();
-      return showToast('Sai mã truy cập');
+      return showToast('Sai mã khách hoặc mật khẩu');
     }
-    if(user.status==='pending'){
+
+    if(user.status === 'pending'){
       setLoginLoading(false);
-      return showToast('Mã đang chờ duyệt');
+      return showToast('Tài khoản đang chờ duyệt');
     }
-    if(user.status==='expired'||new Date(user.expire+'T23:59:59')<new Date()){
+
+    if(user.status === 'expired' || new Date(user.expire + 'T23:59:59') < new Date()){
       setLoginLoading(false);
-      return showToast('Mã đã hết hạn hoặc bị khóa');
+      return showToast('Tài khoản hết hạn hoặc đã bị khóa');
     }
-    currentUser=user;
-    localStorage.setItem(SESSION_KEY,user.username);
+
+    currentUser = user;
+    localStorage.setItem(SESSION_KEY, user.username);
     enterApp(user);
     setLoginLoading(false);
-  },160);
+  }, 160);
 }
 function enterApp(user){
   $('accountName').innerText=user.name||user.username;
