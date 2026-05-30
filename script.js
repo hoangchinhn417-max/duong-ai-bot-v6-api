@@ -236,7 +236,7 @@ async function pullLatest(){
 }
 function showWaitingRealtime(){
   if(hasRealtimeData) return;
-  updateSignal({symbol:'XAUUSD.G',timeframe:'M1',signal:'WAIT',score:55,price:'--',rsi:'--',flow:'--',delta:'--',power:'--',buySell:'--',reason:'Đang chờ dữ liệu realtime từ MT5 EA Bridge.',trend:'WAITING',liquidity:'WAITING',pressure:'WAITING',risk:'WAITING',source:'WAITING_FOR_MT5',realtime:false});
+  updateSignal({symbol: window.currentSymbol || 'WAIT'',timeframe:'M1',signal:'WAIT',score:55,price:'--',rsi:'--',flow:'--',delta:'--',power:'--',buySell:'--',reason:'Đang chờ dữ liệu realtime từ MT5 EA Bridge.',trend:'WAITING',liquidity:'WAITING',pressure:'WAITING',risk:'WAITING',source:'WAITING_FOR_MT5',realtime:false});
 }
 function norm(v){let s=String(v||'WAIT').toUpperCase();if(s.includes('SELL'))return'SELL NOW';if(s.includes('BUY'))return'BUY NOW';return'WAIT'}
 function nval(v){let x=Number(v);return isNaN(x)?0:x}
@@ -274,8 +274,27 @@ function cleanDisplay(v,fallback='--'){
 }
 function cleanZone(v){ return cleanDisplay(v,'--'); }
 
-function dominanceFrom(s,sig){let f=nval(rawFlow(s)),d=nval(rawDelta(s));if(f<0&&d<0)return'Seller dominant';if(f>0&&d>0)return'Buyer dominant';if(sig.includes('SELL'))return'Seller dominant';if(sig.includes('BUY'))return'Buyer dominant';return'Mixed'}
+function dominanceFrom(s,sig){
+  let f=nval(rawFlow(s)), d=nval(rawDelta(s));
+  if(f < 0 && d < 0) return 'SELL';
+  if(f > 0 && d > 0) return 'BUY';
+  return sig || 'WAIT';
+}
+
 function updateSignal(s){
+
+  window.currentSymbol =
+    s.symbol ||
+    s.displaySymbol ||
+    s.pair ||
+    s.mt5Symbol ||
+    s.chartSymbol ||
+    window.currentSymbol ||
+    'WAIT';
+
+  if(s && s.realtime!==false ...
+
+if(s && s.realtime!==false ...
   if(s && s.realtime!==false && s.source!=='WAITING_FOR_MT5') hasRealtimeData=true;
   let sig=norm(s.signal),sc=Math.max(0,Math.min(100,Number(s.score||s.confidence||s.conf||55))),p=s.price||s.bid||s.ask||'--',fv=rawFlow(s),dv=rawDelta(s),pv=rawPower(s),bs=rawBuySell(s),dom=dominanceFrom(s,sig);
   let sellZ=cleanZone(zoneVal(s,'sell')), buyZ=cleanZone(zoneVal(s,'buy'));
