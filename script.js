@@ -2,7 +2,6 @@ const APP_VERSION='VYRO_PRO_MAX_TERMINAL_V16_2_JSON_SMC_AI_TP_ENGINE';
 const USER_KEY='vyro_pro_users';
 const PIN_KEY='vyro_pro_pin';
 const SESSION_KEY='vyro_pro_session';
-const ONE_CODE_LOGIN_FIX='1';
 
 let users=[],currentUser=null,ADMIN_PIN=localStorage.getItem(PIN_KEY)||'2606';
 let API_BASE=window.location.origin,eventSource=null,lastDataTime=0,heartbeatTimer=null,hasRealtimeData=false;
@@ -14,8 +13,7 @@ function initUsers(){
   if(!users.length){
     users=[
       {username:'admin',password:'2606',name:'Master Admin',plan:'vip',status:'active',expire:'2099-12-31',admin:true,email:'',createdAt:new Date().toISOString()},
-      {username:'vip001',password:'123456',name:'VIP Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()},
-      {username:'VYRO-8888',password:'VYRO-8888',name:'VYRO Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()}
+      {username:'vip001',password:'123456',name:'VIP Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()}
     ];
     saveUsers();
   }
@@ -24,13 +22,6 @@ function initUsers(){
 function ensureAdmin(){
   if(!users.find(u=>u.username==='admin')){
     users.unshift({username:'admin',password:'2606',name:'Master Admin',plan:'vip',status:'active',expire:'2099-12-31',admin:true,email:'',createdAt:new Date().toISOString()});
-    saveUsers();
-  }
-  ensureDefaultCode();
-}
-function ensureDefaultCode(){
-  if(!users.find(u=>String(u.username).toUpperCase()==='VYRO-8888')){
-    users.push({username:'VYRO-8888',password:'VYRO-8888',name:'VYRO Client',plan:'pro',status:'active',expire:addDays(30),admin:false,email:'',createdAt:new Date().toISOString()});
     saveUsers();
   }
 }
@@ -45,15 +36,7 @@ function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;',
 function safeUserArg(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 function togglePass(id){let el=$(id);el.type=el.type==='password'?'text':'password'}
 function setLoginLoading(on){let b=$('loginBtn');if(!b)return;b.classList.toggle('loading',!!on);$('loginBtnText').innerText=on?'Đang kiểm tra...':'Vào hệ thống'}
-function markLoginError(){
-  ['loginUser'].forEach(id=>{
-    let el=$(id);
-    if(!el) return;
-    let wrap=el.closest('.input-wrap')||el;
-    wrap.classList.add('input-error');
-    setTimeout(()=>wrap.classList.remove('input-error'),450);
-  });
-})}
+function markLoginError(){['loginUser','loginPass'].forEach(id=>{let wrap=$(id).closest('.input-wrap')||$(id);wrap.classList.add('input-error');setTimeout(()=>wrap.classList.remove('input-error'),450)})}
 function showForgot(){showToast('Liên hệ quản trị VYRO để reset mật khẩu')}
 function switchTab(m){$('tabLogin').classList.toggle('active',m==='login');$('tabReg').classList.toggle('active',m==='reg');$('loginForm').classList.toggle('hidden',m!=='login');$('regForm').classList.toggle('hidden',m!=='reg')}
 
@@ -67,43 +50,18 @@ function registerNow(){
 }
 
 function loginNow(){
-  let code = $('loginUser').value.trim();
-
+  let u=$('loginUser').value.trim(),p=$('loginPass').value.trim();
   setLoginLoading(true);
-
   setTimeout(()=>{
-    if(!code){
-      setLoginLoading(false);
-      markLoginError();
-      return showToast('Nhập mã truy cập');
-    }
-
-    let user = users.find(x =>
-      String(x.username).toUpperCase() === code.toUpperCase() ||
-      String(x.password).toUpperCase() === code.toUpperCase()
-    );
-
-    if(!user){
-      setLoginLoading(false);
-      markLoginError();
-      return showToast('Sai mã truy cập');
-    }
-
-    if(user.status === 'pending'){
-      setLoginLoading(false);
-      return showToast('Mã đang chờ duyệt');
-    }
-
-    if(user.status === 'expired' || user.status === 'locked' || new Date(user.expire + 'T23:59:59') < new Date()){
-      setLoginLoading(false);
-      return showToast('Mã đã bị khóa hoặc hết hạn');
-    }
-
-    currentUser = user;
-    localStorage.setItem(SESSION_KEY, user.username);
+    let user=users.find(x=>x.username===u&&x.password===p);
+    if(!user){setLoginLoading(false);markLoginError();return showToast('Sai tài khoản hoặc mật khẩu')}
+    if(user.status==='pending'){setLoginLoading(false);return showToast('Tài khoản đang chờ duyệt')}
+    if(user.status==='expired'||new Date(user.expire+'T23:59:59')<new Date()){setLoginLoading(false);return showToast('Tài khoản đã hết hạn hoặc bị khóa')}
+    currentUser=user;
+    localStorage.setItem(SESSION_KEY,user.username);
     enterApp(user);
     setLoginLoading(false);
-  }, 120);
+  },260);
 }
 function enterApp(user){
   $('accountName').innerText=user.name||user.username;
@@ -228,7 +186,7 @@ async function pullLatest(){
 }
 function showWaitingRealtime(){
   if(hasRealtimeData) return;
-  updateSignal({symbol: window.currentSymbol || 'WAIT',timeframe:'M1',signal:'WAIT',score:55,price:'--',rsi:'--',flow:'--',delta:'--',power:'--',buySell:'--',reason:'Đang chờ dữ liệu realtime từ MT5 EA Bridge.',trend:'WAITING',liquidity:'WAITING',pressure:'WAITING',risk:'WAITING',source:'WAITING_FOR_MT5',realtime:false});
+  updateSignal({symbol:'XAUUSD.G',timeframe:'M1',signal:'WAIT',score:55,price:'--',rsi:'--',flow:'--',delta:'--',power:'--',buySell:'--',reason:'Đang chờ dữ liệu realtime từ MT5 EA Bridge.',trend:'WAITING',liquidity:'WAITING',pressure:'WAITING',risk:'WAITING',source:'WAITING_FOR_MT5',realtime:false});
 }
 function norm(v){let s=String(v||'WAIT').toUpperCase();if(s.includes('SELL'))return'SELL NOW';if(s.includes('BUY'))return'BUY NOW';return'WAIT'}
 function nval(v){let x=Number(v);return isNaN(x)?0:x}
@@ -268,16 +226,6 @@ function cleanZone(v){ return cleanDisplay(v,'--'); }
 
 function dominanceFrom(s,sig){let f=nval(rawFlow(s)),d=nval(rawDelta(s));if(f<0&&d<0)return'Seller dominant';if(f>0&&d>0)return'Buyer dominant';if(sig.includes('SELL'))return'Seller dominant';if(sig.includes('BUY'))return'Buyer dominant';return'Mixed'}
 function updateSignal(s){
-
-  window.currentSymbol =
-    s.symbol ||
-    s.displaySymbol ||
-    s.pair ||
-    s.mt5Symbol ||
-    s.chartSymbol ||
-    window.currentSymbol ||
-    'WAIT';
-
   if(s && s.realtime!==false && s.source!=='WAITING_FOR_MT5') hasRealtimeData=true;
   let sig=norm(s.signal),sc=Math.max(0,Math.min(100,Number(s.score||s.confidence||s.conf||55))),p=s.price||s.bid||s.ask||'--',fv=rawFlow(s),dv=rawDelta(s),pv=rawPower(s),bs=rawBuySell(s),dom=dominanceFrom(s,sig);
   let sellZ=cleanZone(zoneVal(s,'sell')), buyZ=cleanZone(zoneVal(s,'buy'));
